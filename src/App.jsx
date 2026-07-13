@@ -77,6 +77,7 @@ import {
   Brain,
   CalendarDays,
   ChevronRight,
+  CircleAlert,
   Compass,
   Dices,
   Download,
@@ -239,6 +240,9 @@ export default function App() {
 
   const simulate = async () => {
     if (!apiKey) {
+      setError(
+        "尚未配置 LLM。请填写兼容接口、模型和 API Key，保存后再开始推演。",
+      );
       setKeyOpen(true);
       return;
     }
@@ -575,6 +579,11 @@ export default function App() {
     }
   };
   const randomizeProfile = async () => {
+    if (!apiKey) {
+      setError("随机生成人设需要 LLM。请先填写兼容接口、模型和 API Key。");
+      setKeyOpen(true);
+      return;
+    }
     setProfileGenerating(true);
     setError("");
     try {
@@ -610,6 +619,11 @@ export default function App() {
     }
   };
   const randomizeParents = async () => {
+    if (!apiKey) {
+      setError("随机生成父母档案需要 LLM。请先填写兼容接口、模型和 API Key。");
+      setKeyOpen(true);
+      return;
+    }
     setParentGenerating(true);
     setError("");
     try {
@@ -889,7 +903,7 @@ export default function App() {
         </nav>
         <main className="hero">
           <img
-            src="/assets/life-crossroads.png"
+            src={`${import.meta.env.BASE_URL}assets/life-crossroads.png`}
             alt="人生分岔口 low-poly 城市场景"
           />
           <div className="hero-shade" />
@@ -985,6 +999,9 @@ export default function App() {
           }}
           settings={settings}
           setSettings={setSettings}
+          error={error}
+          onClearError={() => setError("")}
+          llmConfigured={Boolean(apiKey)}
           onGenerateProfile={randomizeProfile}
           profileGenerating={profileGenerating}
           onGenerateParents={randomizeParents}
@@ -996,6 +1013,17 @@ export default function App() {
           onClose={() => setKeyOpen(false)}
           apiKey={apiKey}
           setApiKey={setApiKey}
+          endpoint={endpoint}
+          setEndpoint={setEndpoint}
+          model={model}
+          setModel={setModel}
+          notice={
+            error ||
+            (!apiKey
+              ? "尚未配置 LLM。建档可以继续，但随机人设和人生推演需要先完成连接。"
+              : "")
+          }
+          onClearNotice={() => setError("")}
         />
       </div>
     );
@@ -1032,6 +1060,15 @@ export default function App() {
           </IconButton>
         </div>
       </header>
+      {error && (
+        <div className="app-error-toast" role="alert">
+          <CircleAlert size={18} />
+          <span>{error}</span>
+          <button onClick={() => setError("")} aria-label="关闭错误提示">
+            <X size={15} />
+          </button>
+        </div>
+      )}
       <div className="mobile-overview" aria-label="人物快捷状态">
         <button onClick={() => setMobileSheet("person")}>
           <span className="mobile-overview-avatar">
@@ -1263,6 +1300,9 @@ export default function App() {
         onStart={() => setSetupOpen(false)}
         settings={settings}
         setSettings={setSettings}
+        error={error}
+        onClearError={() => setError("")}
+        llmConfigured={Boolean(apiKey)}
         onGenerateProfile={randomizeProfile}
         profileGenerating={profileGenerating}
         onGenerateParents={randomizeParents}
@@ -1278,6 +1318,11 @@ export default function App() {
         setEndpoint={setEndpoint}
         model={model}
         setModel={setModel}
+        notice={
+          error ||
+          (!apiKey ? "尚未配置 LLM。请填写下方信息后，再开始人生推演。" : "")
+        }
+        onClearNotice={() => setError("")}
       />
       <SummaryModal
         open={summaryOpen}

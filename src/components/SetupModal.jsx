@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { ArrowRight, Dices, Plus, Sparkles, X } from "lucide-react";
+import {
+  ArrowRight,
+  CircleAlert,
+  Dices,
+  Plus,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { IconButton } from "./Common";
 import ParentAdvanced from "./ParentAdvanced";
 import { FAMILY_LEVELS, parentsForFamily } from "../data/family";
@@ -135,6 +142,9 @@ export default function SetupModal({
   onStart,
   settings,
   setSettings,
+  error,
+  onClearError,
+  llmConfigured,
   onGenerateProfile,
   profileGenerating,
   onGenerateParents,
@@ -173,6 +183,15 @@ export default function SetupModal({
             03 人生引导
           </button>
         </div>
+        {error && (
+          <div className="setup-inline-error" role="alert">
+            <CircleAlert size={17} />
+            <span>{error}</span>
+            <button onClick={onClearError} aria-label="关闭错误提示">
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {tab === "world" && (
           <div className="setup-content">
             <div className="world-presets">
@@ -614,6 +633,11 @@ export default function SetupModal({
           </div>
         )}
         <div className="modal-actions">
+          <span className={`setup-llm-state ${llmConfigured ? "ready" : ""}`}>
+            {llmConfigured
+              ? "LLM 已连接，可随机建档并推演"
+              : "建档无需 LLM；随机生成人设和后续推演需要连接"}
+          </span>
           <button className="ghost" onClick={onClose}>
             返回
           </button>

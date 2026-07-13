@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X } from "lucide-react";
+import { CircleAlert, X } from "lucide-react";
 import { IconButton } from "./Common";
 import { DEFAULT_LLM_CONFIG, LLM_STORAGE_KEYS } from "../data/llmConfig";
 
@@ -12,6 +12,8 @@ export default function KeyModal({
   setEndpoint: updateEndpoint,
   model: configuredModel,
   setModel: updateModel,
+  notice,
+  onClearNotice,
 }) {
   const [draft, setDraft] = useState(apiKey);
   const [endpoint, setEndpoint] = useState(
@@ -35,6 +37,12 @@ export default function KeyModal({
           <span>连接模拟引擎</span>
           <b>让 LLM 接管整个世界。</b>
         </div>
+        {notice && (
+          <div className="connection-notice" role="alert">
+            <CircleAlert size={17} />
+            <span>{notice}</span>
+          </div>
+        )}
         <label>
           兼容接口
           <input
@@ -66,6 +74,7 @@ export default function KeyModal({
             onClick={() => {
               setApiKey("");
               localStorage.removeItem(LLM_STORAGE_KEYS.apiKey);
+              onClearNotice?.();
               onClose();
             }}
           >
@@ -80,6 +89,7 @@ export default function KeyModal({
               localStorage.setItem(LLM_STORAGE_KEYS.apiKey, draft.trim());
               localStorage.setItem(LLM_STORAGE_KEYS.endpoint, endpoint);
               localStorage.setItem(LLM_STORAGE_KEYS.model, model);
+              onClearNotice?.();
               onClose();
             }}
           >
