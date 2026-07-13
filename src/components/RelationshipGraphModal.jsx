@@ -30,7 +30,7 @@ export default function RelationshipGraphModal({
   const [selectedId, setSelectedId] = useState(initialName || null);
   const graphRef = useRef(null);
   const wrapRef = useRef(null);
-  const [graphSize, setGraphSize] = useState({ width: 720, height: 390 });
+  const [graphSize, setGraphSize] = useState({ width: 760, height: 480 });
   const graphData = {
     nodes: [
       {
@@ -125,7 +125,7 @@ export default function RelationshipGraphModal({
         280,
         Math.floor(wrapRef.current?.clientWidth || 720),
       );
-      setGraphSize({ width, height: window.innerWidth < 640 ? 290 : 390 });
+      setGraphSize({ width, height: window.innerWidth < 640 ? 290 : 480 });
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
@@ -208,7 +208,7 @@ export default function RelationshipGraphModal({
               context.textAlign = "center";
               context.textBaseline = "middle";
               context.fillText(node.emoji, node.x, node.y);
-              context.font = `${11 / globalScale}px "Noto Sans SC", sans-serif`;
+              context.font = `${14 / globalScale}px "Noto Sans SC", sans-serif`;
               context.fillStyle = "#5a5670";
               context.fillText(
                 node.name,
@@ -217,7 +217,7 @@ export default function RelationshipGraphModal({
               );
               if (!node.isMe) {
                 context.fillStyle = node.color;
-                context.font = `${9 / globalScale}px "Noto Sans SC", sans-serif`;
+                context.font = `${11 / globalScale}px "Noto Sans SC", sans-serif`;
                 context.fillText(
                   node.value,
                   node.x,

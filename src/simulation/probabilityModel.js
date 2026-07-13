@@ -1,3 +1,5 @@
+import { buildWorldState } from "./worldModel";
+
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 
 const riskScore = (turn, pattern, fallback) => {
@@ -125,8 +127,9 @@ export function buildAbilityModel(settings, state) {
   };
 }
 
-export function buildRandomEventField(settings, state, turn) {
+export function buildRandomEventField(settings, state, turn, month = 0) {
   const model = buildAbilityModel(settings, state);
+  const worldState = buildWorldState(settings, month);
   const adventure = model.traits.冒险?.multiplier || 1;
   const curiosity = model.traits.好奇?.multiplier || 1;
   const exposure = /旅行|户外|骑行|驾驶|夜班|加班|创业/.test(
@@ -156,7 +159,8 @@ export function buildRandomEventField(settings, state, turn) {
         0.012 *
         model.skill.multiplier *
         curiosity *
-        riskMultiplier(risks.opportunity),
+        riskMultiplier(risks.opportunity) *
+        (1 + worldState.modifiers.opportunityWeight),
     },
     {
       key: "relationshipShock",
@@ -169,7 +173,10 @@ export function buildRandomEventField(settings, state, turn) {
       label: "意外财务冲击",
       valence: "adverse",
       probability:
-        0.018 * (0.8 + adventure * 0.25) * riskMultiplier(risks.financial),
+        0.018 *
+        (0.8 + adventure * 0.25) *
+        riskMultiplier(risks.financial) *
+        worldState.modifiers.financialShock,
     },
     {
       key: "fraudOrTrap",
@@ -239,8 +246,9 @@ export function buildRandomEventField(settings, state, turn) {
   });
 }
 
-export function buildTurnOutcomeField(settings, state, turn) {
+export function buildTurnOutcomeField(settings, state, turn, month = 0) {
   const model = buildAbilityModel(settings, state);
+  const worldState = buildWorldState(settings, month);
   const risks = {
     opportunity: riskScore(turn, /职业|升职|跃迁|就业|机会/, 18),
     relationship: riskScore(turn, /关系|婚恋|家庭|背叛|社交/, 12),
@@ -262,12 +270,14 @@ export function buildTurnOutcomeField(settings, state, turn) {
   const favorableWeight =
     0.22 +
     risks.opportunity / 400 +
-    Math.max(0, model.skill.multiplier - 1) * 0.025;
+    Math.max(0, model.skill.multiplier - 1) * 0.025 +
+    worldState.modifiers.opportunityWeight;
   const adverseWeight =
     0.22 +
     (risks.financial + risks.health + risks.relationship) / 500 +
     debtPressure +
-    lowCondition;
+    lowCondition +
+    worldState.modifiers.adverseWeight;
   const weights = {
     favorable: favorableWeight,
     mixed: 0.34,

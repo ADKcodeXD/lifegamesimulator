@@ -14,6 +14,7 @@ import BottomPlayer from "./components/BottomPlayer";
 import ApprovalRequest from "./components/ApprovalRequest";
 import ProfileDetailModal from "./components/ProfileDetailModal";
 import AssetLedgerModal from "./components/AssetLedgerModal";
+import WorldOverview from "./components/WorldOverview";
 import {
   FAMILY_LEVELS,
   parentToRelation,
@@ -67,10 +68,11 @@ import {
   generateApprovalRequest,
   generateCharacterProfile,
   generateParentProfiles,
-  generateSimulationTrace,
 } from "./services/llm";
 import { exportLifePoster } from "./utils/poster";
+import { playUiSound } from "./utils/sound";
 import { formatWorldMoney } from "./simulation/probabilityModel";
+import { buildWorldState } from "./simulation/worldModel";
 import {
   Activity,
   ArrowRight,
@@ -112,6 +114,32 @@ const LANDING_ICONS = {
   people: UsersRound,
 };
 
+const createTurnLoadingTrace = (settings, age) => ({
+  opening: "系统正在翻主角的黑历史。放心，不会通知本人。",
+  beats: [
+    {
+      phase: "加载黑历史",
+      text: `正在读取${settings.name}这${age}年攒下的脾气、执念和嘴硬记录，防止模型突然让人“大彻大悟”。`,
+      people: [],
+    },
+    {
+      phase: "世界开始整活",
+      text: "油价、房价、老板和天气已加入群聊。好消息还在输入中，坏消息网速比较快。",
+      people: [],
+    },
+    {
+      phase: "人情世故副本",
+      text: "亲友、同事和路人NPC正在各怀心思。成年人没有新手村，只有‘你应该懂的’。",
+      people: [],
+    },
+    {
+      phase: "现实发送账单",
+      text: "本轮操作已经提交，概不撤回。收益和代价正在抢麦，钱包选择了静音。",
+      people: [],
+    },
+  ],
+});
+
 const normalizeResume = (resume, settings) => {
   const fallback = createInitialResume(settings);
   return {
@@ -144,6 +172,9 @@ export default function App() {
     [milestoneDetail, setMilestoneDetail] = useState(null),
     [eventExpanded, setEventExpanded] = useState(false),
     [assetLedgerOpen, setAssetLedgerOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(
+    () => localStorage.getItem("life_sound_enabled") !== "false",
+  );
   const [pendingApproval, setPendingApproval] = useState(null);
   const [simulationTrace, setSimulationTrace] = useState(null);
   const [simulationPhase, setSimulationPhase] = useState("reading");
@@ -190,6 +221,7 @@ export default function App() {
     monthOfYear = (month % 12) + 1,
     financialSummary = calculateFinancialSummary(state),
     netWorth = financialSummary.netWorth;
+  const worldState = buildWorldState(settings, month);
   const spouse = relations.find((r) =>
     /配偶|夫妻|妻子|丈夫|爱人|伴侣/.test(r.status),
   );
@@ -199,6 +231,15 @@ export default function App() {
   useEffect(() => {
     if (!started) setState(createInitialState(settings.initialCash));
   }, [settings.initialCash, started]);
+  useEffect(() => {
+    const handleButtonSound = (event) => {
+      const control = event.target.closest("button, label.json-btn");
+      if (!control || control.disabled) return;
+      playUiSound("click", soundEnabled);
+    };
+    document.addEventListener("pointerdown", handleButtonSound);
+    return () => document.removeEventListener("pointerdown", handleButtonSound);
+  }, [soundEnabled]);
   useEffect(() => {
     if (!settings.parents?.length) return;
     setRelations((current) => {
@@ -248,8 +289,9 @@ export default function App() {
       return;
     }
     setSimulating(true);
-    setSimulationTrace(null);
+    setSimulationTrace(createTurnLoadingTrace(settings, age));
     setSimulationPhase("reading");
+    playUiSound("turn", soundEnabled);
     setEventExpanded(false);
     setError("");
     try {
@@ -275,23 +317,6 @@ export default function App() {
           setPendingApproval({ ...approvalRequest, requestId: Date.now() });
         });
       }
-      let publicTrace = null;
-      try {
-        publicTrace = await generateSimulationTrace(llmConfig, {
-          settings,
-          state,
-          relations,
-          logs,
-          month,
-          turn,
-          resume,
-          approvalDecision,
-        });
-        setSimulationTrace(publicTrace);
-      } catch {
-        // The full simulation remains usable when a provider cannot produce
-        // the optional public narrative trace.
-      }
       setSimulationPhase("writing");
       const result = await callSimulator(llmConfig, {
         settings,
@@ -305,8 +330,16 @@ export default function App() {
         socialEdges,
         npcProfiles,
         historicalContacts,
-        publicTrace,
+        publicTrace: null,
       });
+      playUiSound(
+        result.outcomeAudit?.direction === "adverse"
+          ? "low"
+          : result.outcomeAudit?.direction === "favorable"
+            ? "success"
+            : "reveal",
+        soundEnabled,
+      );
       const skillTurn = reconcileSkillTurn(resume.skills, result);
       const d = result.stateDelta || {};
       const turnMonths = settings.monthsPerTurn || 6;
@@ -565,6 +598,7 @@ export default function App() {
       );
       setHasSave(true);
     } catch (e) {
+      playUiSound("low", soundEnabled);
       setError(e.message || "推演失败，请检查 API Key 与网络。");
       setAutoPlay(false);
     } finally {
@@ -1094,6 +1128,7 @@ export default function App() {
           </button>
         </div>
       )}
+      <WorldOverview worldState={worldState} />
       <div className="mobile-overview" aria-label="人物快捷状态">
         <button onClick={() => setMobileSheet("person")}>
           <span className="mobile-overview-avatar">
@@ -1239,6 +1274,15 @@ export default function App() {
         restartFromPlayback={restartFromPlayback}
         exportJson={exportJson}
         importJson={importJson}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => {
+          playUiSound("toggle", true);
+          setSoundEnabled((current) => {
+            const next = !current;
+            localStorage.setItem("life_sound_enabled", String(next));
+            return next;
+          });
+        }}
       />
       {historyOpen && (
         <HistoryModal

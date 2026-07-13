@@ -5,6 +5,8 @@ import {
   Play,
   RefreshCcw,
   RotateCcw,
+  Volume2,
+  VolumeX,
   Zap,
 } from "lucide-react";
 
@@ -23,6 +25,8 @@ export default function BottomPlayer({
   restartFromPlayback,
   exportJson,
   importJson,
+  soundEnabled,
+  onToggleSound,
 }) {
   return (
     <div className="bottom-player">
@@ -97,6 +101,14 @@ export default function BottomPlayer({
           }}
         />
       </label>
+      <button
+        className="sound-btn"
+        onClick={onToggleSound}
+        aria-label={soundEnabled ? "关闭游戏音效" : "开启游戏音效"}
+        title={soundEnabled ? "关闭游戏音效" : "开启游戏音效"}
+      >
+        {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+      </button>
     </div>
   );
 }

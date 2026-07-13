@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { CircleAlert, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, Loader2, X } from "lucide-react";
 import { IconButton } from "./Common";
 import { DEFAULT_LLM_CONFIG, LLM_STORAGE_KEYS } from "../data/llmConfig";
+import { testLlmConnection } from "../services/llm";
 
 export default function KeyModal({
   open,
@@ -26,6 +27,36 @@ export default function KeyModal({
       localStorage.getItem(LLM_STORAGE_KEYS.model) ||
       DEFAULT_LLM_CONFIG.model,
   );
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const saveConfig = () => {
+    const nextApiKey = draft.trim();
+    const nextEndpoint = endpoint.trim();
+    const nextModel = model.trim();
+    setApiKey(nextApiKey);
+    updateEndpoint?.(nextEndpoint);
+    updateModel?.(nextModel);
+    localStorage.setItem(LLM_STORAGE_KEYS.apiKey, nextApiKey);
+    localStorage.setItem(LLM_STORAGE_KEYS.endpoint, nextEndpoint);
+    localStorage.setItem(LLM_STORAGE_KEYS.model, nextModel);
+  };
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      await testLlmConnection({ apiKey: draft, endpoint, model });
+      saveConfig();
+      onClearNotice?.();
+      setTestResult({ type: "success", message: "连接测试成功，配置已保存。" });
+    } catch (error) {
+      setTestResult({
+        type: "error",
+        message: error?.message || "连接测试失败，请检查配置。",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
   if (!open) return null;
   return (
     <div className="modal-backdrop">
@@ -68,6 +99,16 @@ export default function KeyModal({
           Key
           仅保存在当前浏览器。纯前端直连适合本地原型，正式上线应使用服务端代理。
         </p>
+        {testResult && (
+          <div className={`connection-test-result ${testResult.type}`}>
+            {testResult.type === "success" ? (
+              <CheckCircle2 size={16} />
+            ) : (
+              <CircleAlert size={16} />
+            )}
+            <span>{testResult.message}</span>
+          </div>
+        )}
         <div className="modal-actions">
           <button
             className="ghost"
@@ -81,14 +122,17 @@ export default function KeyModal({
             清除 Key
           </button>
           <button
+            className="ghost"
+            onClick={handleTestConnection}
+            disabled={testing}
+          >
+            {testing && <Loader2 className="spin-icon" size={16} />}
+            测试链接
+          </button>
+          <button
             className="primary"
             onClick={() => {
-              setApiKey(draft.trim());
-              updateEndpoint?.(endpoint);
-              updateModel?.(model);
-              localStorage.setItem(LLM_STORAGE_KEYS.apiKey, draft.trim());
-              localStorage.setItem(LLM_STORAGE_KEYS.endpoint, endpoint);
-              localStorage.setItem(LLM_STORAGE_KEYS.model, model);
+              saveConfig();
               onClearNotice?.();
               onClose();
             }}

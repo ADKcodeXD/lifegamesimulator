@@ -1,6 +1,6 @@
 export const DEFAULT_LLM_CONFIG = {
-  endpoint: "https://api.apifast.tech/v1",
-  model: "gemini-3-flash-preview-maxthinking",
+  endpoint: "https://api.deepseek.com",
+  model: "deepseek-v4-flash",
 } as const;
 
 export const LLM_STORAGE_KEYS = {
