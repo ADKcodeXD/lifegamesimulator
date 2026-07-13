@@ -4810,6 +4810,9 @@ button {
   flex-direction: column;
   max-height: 56vh;
 }
+.setup-modal .person-setup > * {
+  flex-shrink: 0;
+}
 .setup-modal .avatar-line {
   gap: 12px;
   padding: 12px 14px;
