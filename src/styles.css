@@ -5365,6 +5365,24 @@ button {
 .setup-llm-state.ready {
   color: #358269;
 }
+.setup-start-error {
+  flex: 1 0 100%;
+  padding: 8px 10px;
+  border: 1px solid #ffcfc9;
+  border-radius: 9px;
+  background: #fff2f0;
+  color: #b64038;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.setup-modal .identity-grid input[aria-invalid="true"] {
+  border-color: #e36c64;
+  box-shadow: 0 0 0 3px rgba(227, 108, 100, 0.12);
+}
 .setup-modal .modal-actions button {
   min-height: 44px;
   padding: 0 18px;

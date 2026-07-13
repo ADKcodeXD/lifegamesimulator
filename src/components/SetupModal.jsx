@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ArrowRight,
   CircleAlert,
@@ -151,6 +151,8 @@ export default function SetupModal({
   parentGenerating,
 }) {
   const [tab, setTab] = useState("person");
+  const [startError, setStartError] = useState("");
+  const nameInputRef = useRef(null);
   if (!open) return null;
   const parents = settings.parents || parentsForFamily(settings.family);
   return (
@@ -356,11 +358,14 @@ export default function SetupModal({
               <label>
                 主角姓名
                 <input
+                  ref={nameInputRef}
                   value={settings.name}
                   maxLength={12}
-                  onChange={(e) =>
-                    setSettings({ ...settings, name: e.target.value })
-                  }
+                  aria-invalid={Boolean(startError && !settings.name.trim())}
+                  onChange={(e) => {
+                    setStartError("");
+                    setSettings({ ...settings, name: e.target.value });
+                  }}
                   placeholder="输入姓名"
                 />
               </label>
@@ -633,6 +638,12 @@ export default function SetupModal({
           </div>
         )}
         <div className="modal-actions">
+          {startError && !settings.name.trim() && (
+            <span className="setup-start-error" role="alert">
+              <CircleAlert size={15} />
+              {startError}
+            </span>
+          )}
           <span className={`setup-llm-state ${llmConfigured ? "ready" : ""}`}>
             {llmConfigured
               ? "LLM 已连接，可随机建档并推演"
@@ -643,11 +654,19 @@ export default function SetupModal({
           </button>
           <button
             className="primary"
-            onClick={onStart}
-            disabled={!settings.name.trim()}
-            title={
-              !settings.name.trim() ? "请先输入姓名或随机生成人设" : undefined
-            }
+            onClick={() => {
+              if (!settings.name.trim()) {
+                setStartError("请先填写主角姓名，再启动模拟。");
+                nameInputRef.current?.focus();
+                nameInputRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+                return;
+              }
+              setStartError("");
+              onStart();
+            }}
           >
             启动模拟 <ArrowRight size={16} />
           </button>
