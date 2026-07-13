@@ -31,7 +31,7 @@ export default function SummaryModal({
         <div className="modal-title">
           <span>人生终章</span>
           <b>
-            {loading ? "LLM 正在回望这一生…" : summary?.title || "等待人生总结"}
+            {loading ? "正在回望这一生…" : summary?.title || "等待人生总结"}
           </b>
         </div>
         {loading ? (

@@ -38,7 +38,7 @@ export default function ParentAdvanced({
               </>
             ) : (
               <>
-                <Dices size={14} /> LLM 重生父母档案
+                <Dices size={14} /> 重新生成父母档案
               </>
             )}
           </button>

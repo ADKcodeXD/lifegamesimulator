@@ -122,7 +122,7 @@ export default function HistoryModal({ historyLogs, month, onClose }) {
                           )}
                           {l.approval && (
                             <div className="tl-detail-block decision">
-                              <b>Agent 审批</b>
+                              <b>人生分岔</b>
                               <p>{l.approval.option?.label}</p>
                               <small>
                                 {l.approval.autoSelected

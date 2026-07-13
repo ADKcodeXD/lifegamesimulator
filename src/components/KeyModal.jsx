@@ -35,7 +35,7 @@ export default function KeyModal({
         </IconButton>
         <div className="modal-title">
           <span>连接模拟引擎</span>
-          <b>让 LLM 接管整个世界。</b>
+          <b>让故事引擎接管这个世界。</b>
         </div>
         {notice && (
           <div className="connection-notice" role="alert">

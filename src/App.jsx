@@ -67,6 +67,7 @@ import {
   generateApprovalRequest,
   generateCharacterProfile,
   generateParentProfiles,
+  generateSimulationTrace,
 } from "./services/llm";
 import { exportLifePoster } from "./utils/poster";
 import { formatWorldMoney } from "./simulation/probabilityModel";
@@ -144,6 +145,8 @@ export default function App() {
     [eventExpanded, setEventExpanded] = useState(false),
     [assetLedgerOpen, setAssetLedgerOpen] = useState(false);
   const [pendingApproval, setPendingApproval] = useState(null);
+  const [simulationTrace, setSimulationTrace] = useState(null);
+  const [simulationPhase, setSimulationPhase] = useState("reading");
   const [profileDetailOpen, setProfileDetailOpen] = useState(false);
   const approvalResolverRef = useRef(null);
   const [apiKey, setApiKey] = useState(
@@ -240,13 +243,13 @@ export default function App() {
 
   const simulate = async () => {
     if (!apiKey) {
-      setError(
-        "尚未配置 LLM。请填写兼容接口、模型和 API Key，保存后再开始推演。",
-      );
+      setError("故事引擎尚未连接。请先完成连接设置，再让人生继续。");
       setKeyOpen(true);
       return;
     }
     setSimulating(true);
+    setSimulationTrace(null);
+    setSimulationPhase("reading");
     setEventExpanded(false);
     setError("");
     try {
@@ -272,6 +275,24 @@ export default function App() {
           setPendingApproval({ ...approvalRequest, requestId: Date.now() });
         });
       }
+      let publicTrace = null;
+      try {
+        publicTrace = await generateSimulationTrace(llmConfig, {
+          settings,
+          state,
+          relations,
+          logs,
+          month,
+          turn,
+          resume,
+          approvalDecision,
+        });
+        setSimulationTrace(publicTrace);
+      } catch {
+        // The full simulation remains usable when a provider cannot produce
+        // the optional public narrative trace.
+      }
+      setSimulationPhase("writing");
       const result = await callSimulator(llmConfig, {
         settings,
         state,
@@ -284,6 +305,7 @@ export default function App() {
         socialEdges,
         npcProfiles,
         historicalContacts,
+        publicTrace,
       });
       const skillTurn = reconcileSkillTurn(resume.skills, result);
       const d = result.stateDelta || {};
@@ -492,6 +514,8 @@ export default function App() {
           learningStatus: result.learningStatus || null,
           stateDelta: result.stateDelta || {},
           relationshipChanges: result.relationshipChanges || [],
+          relationshipSummary: result.relationshipSummary || "",
+          intimacySummary: result.intimacySummary || "",
           npcRelationshipChanges: result.npcRelationshipChanges || [],
           npcLifecycleUpdates: result.npcLifecycleUpdates || [],
           personalityUpdate: result.personalityUpdate || null,
@@ -897,7 +921,8 @@ export default function App() {
               <Network size={16} /> 架构图
             </button>
             <button className="nav-link" onClick={() => setKeyOpen(true)}>
-              <KeyRound size={16} /> {apiKey ? "LLM 已连接" : "连接 LLM"}
+              <KeyRound size={16} />
+              {apiKey ? "故事引擎已连接" : "连接故事引擎"}
             </button>
           </div>
         </nav>
@@ -909,7 +934,7 @@ export default function App() {
           <div className="hero-shade" />
           <div className="hero-copy">
             <div className="eyebrow">
-              <Sparkles size={14} /> 全 LLM 驱动的人生社会模拟器
+              <Sparkles size={14} /> 每一次经历，都会改变之后的人生
             </div>
             <h1>
               人生没有
@@ -965,7 +990,7 @@ export default function App() {
             <div className="mini-choice">
               <i>∞</i>
               <span>
-                LLM 生成世界与行动
+                世界与人物会自行变化
                 <small>状态 → 概率 → 事件 → 决策 → 新状态</small>
               </span>
               <ChevronRight />
@@ -974,7 +999,7 @@ export default function App() {
         </main>
         <footer>
           <span>一个持续演化的 AI 人生实验</span>
-          <span>API Key 由你保管 · 不内置剧情题库</span>
+          <span>连接信息只保存在当前设备 · 没有固定剧情</span>
         </footer>
         <SetupModal
           open={setupOpen}
@@ -1020,7 +1045,7 @@ export default function App() {
           notice={
             error ||
             (!apiKey
-              ? "尚未配置 LLM。建档可以继续，但随机人设和人生推演需要先完成连接。"
+              ? "故事引擎尚未连接。建档可以继续，随机人设和人生发展需要先完成连接。"
               : "")
           }
           onClearNotice={() => setError("")}
@@ -1053,7 +1078,7 @@ export default function App() {
           <button className="nav-link" onClick={() => setKeyOpen(true)}>
             <Bot size={16} />
             <i className={apiKey ? "online" : ""} />
-            {apiKey ? "LLM 在线" : "未连接"}
+            {apiKey ? "故事引擎在线" : "未连接"}
           </button>
           <IconButton onClick={reset}>
             <RefreshCcw size={17} />
@@ -1161,8 +1186,8 @@ export default function App() {
             error={error}
             autoPlay={autoPlay}
             avatar={avatarFor(age, settings.gender)}
-            relations={relations}
-            milestones={milestones}
+            simulationTrace={simulationTrace}
+            simulationPhase={simulationPhase}
           />
         </main>
         <RightPanel
@@ -1322,7 +1347,7 @@ export default function App() {
         setModel={setModel}
         notice={
           error ||
-          (!apiKey ? "尚未配置 LLM。请填写下方信息后，再开始人生推演。" : "")
+          (!apiKey ? "故事引擎尚未连接。完成下方设置后，就可以继续人生。" : "")
         }
         onClearNotice={() => setError("")}
       />

@@ -228,7 +228,7 @@ export default function SetupModal({
               />
             </label>
             <p className="helper">
-              这不是固定世界观。每过 12 个月，LLM
+              这不是固定世界观。每过 12 个月，故事引擎
               会根据上一年的经济、政策、科技与社会情绪，自主生成下一年的世界变化。
             </p>
             <div className="generator-note">
@@ -271,7 +271,7 @@ export default function SetupModal({
                   </>
                 ) : (
                   <>
-                    <Dices size={14} /> LLM 随机生成人设
+                    <Dices size={14} /> 智能生成人设
                   </>
                 )}
               </button>
@@ -646,8 +646,8 @@ export default function SetupModal({
           )}
           <span className={`setup-llm-state ${llmConfigured ? "ready" : ""}`}>
             {llmConfigured
-              ? "LLM 已连接，可随机建档并推演"
-              : "建档无需 LLM；随机生成人设和后续推演需要连接"}
+              ? "故事引擎已连接，可以随机建档并继续人生"
+              : "建档无需连接；随机人设和后续人生发展需要故事引擎"}
           </span>
           <button className="ghost" onClick={onClose}>
             返回

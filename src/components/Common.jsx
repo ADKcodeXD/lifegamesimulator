@@ -10,7 +10,7 @@ export function Logo() {
       </div>
       <div>
         <b>人生分岔口</b>
-        <span>LIFE BRANCH · LLM SIM</span>
+        <span>LIFE BRANCH · 人生模拟</span>
       </div>
     </div>
   );

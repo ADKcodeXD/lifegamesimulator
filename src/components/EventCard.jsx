@@ -36,160 +36,97 @@ function StatusCard({ icon, title, status, detail, tone }) {
   );
 }
 
-const LOADING_AGENTS = [
-  {
-    name: "世界 Agent",
-    task: "读取时代、城市与当前处境",
-    detail: "正在筛选这段时间里真正可能发生的事件",
-  },
-  {
-    name: "记忆 Agent",
-    task: "回看关键节点与人物经历",
-    detail: "让新的选择继承过去，而不是重写人设",
-  },
-  {
-    name: "关系 Agent",
-    task: "检查现有关系与相遇机会",
-    detail: "评估谁会靠近、疏远，或第一次出现",
-  },
-  {
-    name: "决策 Agent",
-    task: "依据性格生成自主行动",
-    detail: "正在权衡欲望、风险、能力与现实限制",
-  },
-  {
-    name: "结算 Agent",
-    task: "核对概率、资产与状态变化",
-    detail: "确保结果可结算，并写入长期人生记忆",
-  },
-];
-
-function SimulationProgress({ settings, age, logs, relations, milestones }) {
-  const [elapsed, setElapsed] = useState(0);
+function SimulationProgress({ settings, trace, phase }) {
+  const beats = trace?.beats || [];
+  const [visibleCount, setVisibleCount] = useState(1);
 
   useEffect(() => {
-    setElapsed(0);
-    const timer = window.setInterval(
-      () => setElapsed((value) => value + 1),
-      1400,
-    );
-    return () => window.clearInterval(timer);
-  }, []);
+    setVisibleCount(1);
+  }, [trace]);
 
-  const activeAgent = Math.min(elapsed, LOADING_AGENTS.length - 1);
-  const progress = Math.min(90, (activeAgent + 1) * 18);
-  const recentNodes = (milestones?.length ? milestones : logs || [])
-    .filter((item) => item?.title && item.title !== "等待世界运转")
-    .slice(-3)
-    .reverse();
-  const knownPeople = (relations || []).slice(0, 5);
-  const stage =
-    age < 18
-      ? "成长与求学"
-      : age < 25
-        ? "成年初期"
-        : age < 45
-          ? "事业与关系发展"
-          : age < 60
-            ? "人生中段"
-            : "晚年生活";
+  useEffect(() => {
+    if (!beats.length || visibleCount >= beats.length) return undefined;
+    const timer = window.setTimeout(
+      () => setVisibleCount((count) => Math.min(count + 1, beats.length)),
+      1500,
+    );
+    return () => window.clearTimeout(timer);
+  }, [beats.length, visibleCount]);
+
+  const visibleBeats = beats.slice(0, visibleCount);
+  const people = visibleBeats
+    .flatMap((beat) => beat.people || [])
+    .filter(
+      (person, index, list) =>
+        person?.name &&
+        list.findIndex((candidate) => candidate.name === person.name) === index,
+    );
 
   return (
-    <div className="simulation-progress" aria-live="polite">
-      <div className="simulation-progress-head">
+    <div className="life-unfolding" aria-live="polite">
+      <header className="life-unfolding-head">
+        <span className="simulation-live-dot" />
         <div>
-          <span className="simulation-live-dot" />
-          <b>人生推演进行中</b>
+          <b>这一段人生正在展开</b>
           <small>
-            已等待约{" "}
-            {elapsed * 1.4 < 10
-              ? Math.round(elapsed * 1.4)
-              : Math.round((elapsed * 1.4) / 5) * 5}{" "}
-            秒
+            {phase === "reading"
+              ? `正在回看${settings.name}走过的路，寻找这段生活的开场…`
+              : "下面是模型刚刚推演出的过程，最终结果会沿着它继续发生。"}
           </small>
         </div>
-        <strong>
-          阶段 {activeAgent + 1}/{LOADING_AGENTS.length}
-        </strong>
-      </div>
-      <div className="simulation-progress-track">
-        <i style={{ width: `${progress}%` }} />
-      </div>
+      </header>
 
-      <section className="simulation-thought-summary">
-        <span>模型分析摘要</span>
-        <p>
-          正在把 <b>{settings.name}</b> 的{stage}、{settings.monthsPerTurn}
-          个月时间跨度、既往经历与关系网络放进同一个现实约束中，寻找最符合此人性格的下一步。
-        </p>
-        <small>这是可公开的任务摘要，不展示模型隐藏推理。</small>
-      </section>
-
-      <div className="simulation-agents">
-        {LOADING_AGENTS.map((agent, index) => (
-          <div
-            className={`simulation-agent ${index < activeAgent ? "done" : ""} ${index === activeAgent ? "active" : ""}`}
-            key={agent.name}
-          >
-            <i>
-              {index < activeAgent
-                ? "✓"
-                : index === activeAgent
-                  ? "●"
-                  : index + 1}
-            </i>
-            <span>
-              <b>{agent.name}</b>
-              <em>{agent.task}</em>
-              {index === activeAgent && <small>{agent.detail}</small>}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="simulation-context-grid">
-        <section>
-          <span>人物关键节点</span>
-          {recentNodes.length ? (
-            recentNodes.map((node, index) => (
-              <div
-                className="simulation-context-item"
-                key={`${node.title}-${index}`}
+      {!beats.length ? (
+        <div className="life-unfolding-wait">
+          <i />
+          <p>
+            <b>故事还在酝酿</b>
+            <span>第一个具体变化出现后，会立刻写在这里。</span>
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="life-unfolding-opening">“{trace.opening}”</p>
+          <div className="life-unfolding-story">
+            {visibleBeats.map((beat, index) => (
+              <article
+                className={index === visibleBeats.length - 1 ? "current" : ""}
+                key={`${beat.phase}-${index}`}
               >
-                <i />
-                <p>
-                  <b>{node.title}</b>
-                  <small>{node.time || "既往经历"}</small>
-                </p>
-              </div>
-            ))
-          ) : (
-            <p className="simulation-context-empty">
-              人生刚刚开始，正在生成第一个关键节点。
-            </p>
-          )}
-        </section>
-        <section>
-          <span>已经结识的人</span>
-          {knownPeople.length ? (
-            <div className="simulation-people">
-              {knownPeople.map((person, index) => (
-                <div key={`${person.name}-${index}`}>
-                  <i>{person.emoji || "○"}</i>
-                  <p>
-                    <b>{person.name}</b>
-                    <small>{person.status || "已有联系"}</small>
-                  </p>
+                <i>{index + 1}</i>
+                <div>
+                  <span>{beat.phase}</span>
+                  <p>{beat.text}</p>
+                  {!!beat.people?.length && (
+                    <div className="life-beat-people">
+                      {beat.people.map((person, personIndex) => (
+                        <small key={`${person.name}-${personIndex}`}>
+                          {person.change || "遇见"} <b>{person.name}</b>
+                          {person.relation ? ` · ${person.relation}` : ""}
+                        </small>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="simulation-context-empty">
-              关系 Agent 正在寻找可能的新相遇。
-            </p>
+              </article>
+            ))}
+          </div>
+          {!!people.length && (
+            <footer className="life-unfolding-people">
+              <span>这段人生里出现的人</span>
+              <div>
+                {people.map((person) => (
+                  <small key={person.name}>
+                    <b>{person.name}</b>
+                    {person.relation ? ` · ${person.relation}` : ""}
+                    {person.change ? ` · ${person.change}` : ""}
+                  </small>
+                ))}
+              </div>
+            </footer>
           )}
-        </section>
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -205,8 +142,8 @@ export default function EventCard({
   error,
   autoPlay,
   avatar,
-  relations,
-  milestones,
+  simulationTrace,
+  simulationPhase,
 }) {
   const historicalSkills = normalizeSkills(
     (logs || []).flatMap((entry) => entry.skillsGained || []),
@@ -241,7 +178,7 @@ export default function EventCard({
           <i />
         </div>
         <div className="activity-bubble">
-          {simulating ? "正在经历这段时间…" : turn.decision || "等待世界运转"}
+          {simulating ? "生活正在向前走…" : turn.decision || "等待世界运转"}
         </div>
         <div className="stage-ground">
           <span />
@@ -285,7 +222,7 @@ export default function EventCard({
               : ""}
           </small>
         </div>
-        <h2>{simulating ? "世界正在生成…" : turn.title}</h2>
+        <h2>{simulating ? "下一段人生正在发生…" : turn.title}</h2>
 
         {!simulating && turn.title && (
           <>
@@ -382,6 +319,9 @@ export default function EventCard({
                         .join("、")}
                   </span>
                 )}
+                {turn.intimacySummary && (
+                  <span>情感 · {turn.intimacySummary}</span>
+                )}
               </div>
             </div>
 
@@ -464,10 +404,8 @@ export default function EventCard({
         {simulating && (
           <SimulationProgress
             settings={settings}
-            age={age}
-            logs={logs}
-            relations={relations}
-            milestones={milestones}
+            trace={simulationTrace}
+            phase={simulationPhase}
           />
         )}
         {error && <div className="sim-error">{error}</div>}

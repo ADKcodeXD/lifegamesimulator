@@ -49,7 +49,7 @@ export default function RightPanel({
           <Brain size={13} />
           <span>
             {simulating
-              ? "正在重新评估人生…"
+              ? "心里正有些新的念头…"
               : turn.thought || "暂时没有特别的想法。"}
           </span>
         </p>

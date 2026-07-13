@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Bot, Check, Clock3, ShieldAlert, Sparkles } from "lucide-react";
+import {
+  Check,
+  Clock3,
+  HeartHandshake,
+  ShieldAlert,
+  Sparkles,
+} from "lucide-react";
 
 const TIMEOUT_SECONDS = 50;
 
@@ -36,11 +42,11 @@ export default function ApprovalRequest({ request, onResolve }) {
       <section className="approval-request">
         <header>
           <span className="approval-agent-icon">
-            <Bot size={21} />
+            <HeartHandshake size={21} />
           </span>
           <div>
-            <small>LLM AGENT · REQUESTING APPROVAL</small>
-            <b>主角需要你的临时授权</b>
+            <small>人生走到了一个分岔口</small>
+            <b>这一次，你想让主角怎么做？</b>
           </div>
           <span className="approval-timer">
             <Clock3 size={15} /> {secondsLeft}s
@@ -84,9 +90,7 @@ export default function ApprovalRequest({ request, onResolve }) {
         </div>
         <footer>
           <ShieldAlert size={15} />
-          <span>
-            若不操作，倒计时结束后 Agent 将自动采用推荐方案并继续推演。
-          </span>
+          <span>若不操作，倒计时结束后将自动采用推荐方案，让人生继续。</span>
         </footer>
       </section>
     </div>

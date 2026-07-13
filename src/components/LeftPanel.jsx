@@ -22,8 +22,8 @@ export default function LeftPanel({
         <div>
           <h3>{settings.name}</h3>
           <p>
-            {FAMILY_LEVELS[settings.family].label}家庭 · {settings.gender} · LLM
-            自主行动
+            {FAMILY_LEVELS[settings.family].label}家庭 · {settings.gender} ·
+            自主生活
           </p>
         </div>
         <button className="tiny-btn" onClick={onEdit} aria-label="修改人物设置">

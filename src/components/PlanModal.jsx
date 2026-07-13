@@ -18,8 +18,8 @@ export default function PlanModal({ open, onClose }) {
           <X size={18} />
         </IconButton>
         <div className="modal-title">
-          <span>LLM 驱动架构</span>
-          <b>世界不是题库，而是一台持续演化的机器。</b>
+          <span>人生如何继续</span>
+          <b>这里没有固定剧情，世界和每个人都会发生变化。</b>
         </div>
         <div className="plan-flow">
           <div className="flow-card purple">
@@ -44,11 +44,11 @@ export default function PlanModal({ open, onClose }) {
           <ChevronRight />
           <div className="flow-card orange">
             <Brain />
-            <b>Agent / LangGraph</b>
+            <b>人物如何决定</b>
             <span>
               接受人格 → 年龄/记忆校准 → 决定
               <br />
-              不优化成人设外的纯理性 Agent
+              不会突然变成与人设不符的“完美理性人”
             </span>
           </div>
           <ChevronRight />
@@ -63,7 +63,7 @@ export default function PlanModal({ open, onClose }) {
           </div>
         </div>
         <div className="feedback-box">
-          <b>每轮 = 一次完整的模型事务</b>
+          <b>每一轮，都会完整经历一段生活</b>
           <div>
             <span>输入</span>完整状态快照 + 最近记忆 + 世界背景 + 情境提示
           </div>

@@ -1,7 +1,29 @@
 import React from "react";
-import { Download, Pause, Play, RefreshCcw, RotateCcw, Zap } from "lucide-react";
+import {
+  Download,
+  Pause,
+  Play,
+  RefreshCcw,
+  RotateCcw,
+  Zap,
+} from "lucide-react";
 
-export default function BottomPlayer({ autoPlay, setAutoPlay, playbackIndex, history, simulating, simulate, settings, age, monthOfYear, month, seekPlayback, restartFromPlayback, exportJson, importJson }) {
+export default function BottomPlayer({
+  autoPlay,
+  setAutoPlay,
+  playbackIndex,
+  history,
+  simulating,
+  simulate,
+  settings,
+  age,
+  monthOfYear,
+  month,
+  seekPlayback,
+  restartFromPlayback,
+  exportJson,
+  importJson,
+}) {
   return (
     <div className="bottom-player">
       <button
@@ -15,7 +37,7 @@ export default function BottomPlayer({ autoPlay, setAutoPlay, playbackIndex, his
           <Play size={17} fill="currentColor" />
         )}
         <span>
-          {autoPlay ? (simulating ? "推演中…" : "阅读中…") : "自动播放"}
+          {autoPlay ? (simulating ? "人生继续中…" : "阅读中…") : "自动播放"}
         </span>
       </button>
       <button
@@ -26,7 +48,7 @@ export default function BottomPlayer({ autoPlay, setAutoPlay, playbackIndex, his
         {simulating ? <i className="typing" /> : <Zap size={16} />}
         <span>
           {simulating
-            ? "推演中"
+            ? "人生继续中"
             : `推演${settings.monthsPerTurn >= 12 ? "一年" : settings.monthsPerTurn >= 6 ? "半年" : settings.monthsPerTurn + "个月"}`}
         </span>
       </button>
