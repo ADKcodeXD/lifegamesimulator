@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ChevronRight, Sparkles } from "lucide-react";
 import { formatWorldMoney } from "../simulation/probabilityModel";
 import { normalizeSkills } from "../simulation/skillModel";
@@ -36,6 +36,164 @@ function StatusCard({ icon, title, status, detail, tone }) {
   );
 }
 
+const LOADING_AGENTS = [
+  {
+    name: "世界 Agent",
+    task: "读取时代、城市与当前处境",
+    detail: "正在筛选这段时间里真正可能发生的事件",
+  },
+  {
+    name: "记忆 Agent",
+    task: "回看关键节点与人物经历",
+    detail: "让新的选择继承过去，而不是重写人设",
+  },
+  {
+    name: "关系 Agent",
+    task: "检查现有关系与相遇机会",
+    detail: "评估谁会靠近、疏远，或第一次出现",
+  },
+  {
+    name: "决策 Agent",
+    task: "依据性格生成自主行动",
+    detail: "正在权衡欲望、风险、能力与现实限制",
+  },
+  {
+    name: "结算 Agent",
+    task: "核对概率、资产与状态变化",
+    detail: "确保结果可结算，并写入长期人生记忆",
+  },
+];
+
+function SimulationProgress({ settings, age, logs, relations, milestones }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    setElapsed(0);
+    const timer = window.setInterval(
+      () => setElapsed((value) => value + 1),
+      1400,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const activeAgent = Math.min(elapsed, LOADING_AGENTS.length - 1);
+  const progress = Math.min(90, (activeAgent + 1) * 18);
+  const recentNodes = (milestones?.length ? milestones : logs || [])
+    .filter((item) => item?.title && item.title !== "等待世界运转")
+    .slice(-3)
+    .reverse();
+  const knownPeople = (relations || []).slice(0, 5);
+  const stage =
+    age < 18
+      ? "成长与求学"
+      : age < 25
+        ? "成年初期"
+        : age < 45
+          ? "事业与关系发展"
+          : age < 60
+            ? "人生中段"
+            : "晚年生活";
+
+  return (
+    <div className="simulation-progress" aria-live="polite">
+      <div className="simulation-progress-head">
+        <div>
+          <span className="simulation-live-dot" />
+          <b>人生推演进行中</b>
+          <small>
+            已等待约{" "}
+            {elapsed * 1.4 < 10
+              ? Math.round(elapsed * 1.4)
+              : Math.round((elapsed * 1.4) / 5) * 5}{" "}
+            秒
+          </small>
+        </div>
+        <strong>
+          阶段 {activeAgent + 1}/{LOADING_AGENTS.length}
+        </strong>
+      </div>
+      <div className="simulation-progress-track">
+        <i style={{ width: `${progress}%` }} />
+      </div>
+
+      <section className="simulation-thought-summary">
+        <span>模型分析摘要</span>
+        <p>
+          正在把 <b>{settings.name}</b> 的{stage}、{settings.monthsPerTurn}
+          个月时间跨度、既往经历与关系网络放进同一个现实约束中，寻找最符合此人性格的下一步。
+        </p>
+        <small>这是可公开的任务摘要，不展示模型隐藏推理。</small>
+      </section>
+
+      <div className="simulation-agents">
+        {LOADING_AGENTS.map((agent, index) => (
+          <div
+            className={`simulation-agent ${index < activeAgent ? "done" : ""} ${index === activeAgent ? "active" : ""}`}
+            key={agent.name}
+          >
+            <i>
+              {index < activeAgent
+                ? "✓"
+                : index === activeAgent
+                  ? "●"
+                  : index + 1}
+            </i>
+            <span>
+              <b>{agent.name}</b>
+              <em>{agent.task}</em>
+              {index === activeAgent && <small>{agent.detail}</small>}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="simulation-context-grid">
+        <section>
+          <span>人物关键节点</span>
+          {recentNodes.length ? (
+            recentNodes.map((node, index) => (
+              <div
+                className="simulation-context-item"
+                key={`${node.title}-${index}`}
+              >
+                <i />
+                <p>
+                  <b>{node.title}</b>
+                  <small>{node.time || "既往经历"}</small>
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="simulation-context-empty">
+              人生刚刚开始，正在生成第一个关键节点。
+            </p>
+          )}
+        </section>
+        <section>
+          <span>已经结识的人</span>
+          {knownPeople.length ? (
+            <div className="simulation-people">
+              {knownPeople.map((person, index) => (
+                <div key={`${person.name}-${index}`}>
+                  <i>{person.emoji || "○"}</i>
+                  <p>
+                    <b>{person.name}</b>
+                    <small>{person.status || "已有联系"}</small>
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="simulation-context-empty">
+              关系 Agent 正在寻找可能的新相遇。
+            </p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function EventCard({
   settings,
   age,
@@ -47,6 +205,8 @@ export default function EventCard({
   error,
   autoPlay,
   avatar,
+  relations,
+  milestones,
 }) {
   const historicalSkills = normalizeSkills(
     (logs || []).flatMap((entry) => entry.skillsGained || []),
@@ -302,10 +462,13 @@ export default function EventCard({
         )}
 
         {simulating && (
-          <p className="event-loading">
-            <i className="typing" />
-            LLM 正在生成事件并让{settings.name}自主决策…
-          </p>
+          <SimulationProgress
+            settings={settings}
+            age={age}
+            logs={logs}
+            relations={relations}
+            milestones={milestones}
+          />
         )}
         {error && <div className="sim-error">{error}</div>}
         {autoPlay && !simulating && turn.title && (

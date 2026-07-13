@@ -1161,6 +1161,8 @@ export default function App() {
             error={error}
             autoPlay={autoPlay}
             avatar={avatarFor(age, settings.gender)}
+            relations={relations}
+            milestones={milestones}
           />
         </main>
         <RightPanel
