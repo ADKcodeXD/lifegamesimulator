@@ -20,7 +20,7 @@ import {
   parentToRelation,
   parentsForFamily,
 } from "./data/family";
-import { normalizeSettings } from "./data/setupConfig";
+import { FREEDOM_LEVELS, normalizeSettings } from "./data/setupConfig";
 import { DEFAULT_LLM_CONFIG, LLM_STORAGE_KEYS } from "./data/llmConfig";
 import {
   createFallbackNpcProfile,
@@ -74,6 +74,11 @@ import { playUiSound } from "./utils/sound";
 import { formatWorldMoney } from "./simulation/probabilityModel";
 import { buildWorldState } from "./simulation/worldModel";
 import {
+  createBodyProfile,
+  evolveBodyProfile,
+  normalizeBodyProfile,
+} from "./simulation/bodyModel";
+import {
   Activity,
   ArrowRight,
   Bot,
@@ -114,32 +119,6 @@ const LANDING_ICONS = {
   people: UsersRound,
 };
 
-const createTurnLoadingTrace = (settings, age) => ({
-  opening: "系统正在翻主角的黑历史。放心，不会通知本人。",
-  beats: [
-    {
-      phase: "加载黑历史",
-      text: `正在读取${settings.name}这${age}年攒下的脾气、执念和嘴硬记录，防止模型突然让人“大彻大悟”。`,
-      people: [],
-    },
-    {
-      phase: "世界开始整活",
-      text: "油价、房价、老板和天气已加入群聊。好消息还在输入中，坏消息网速比较快。",
-      people: [],
-    },
-    {
-      phase: "人情世故副本",
-      text: "亲友、同事和路人NPC正在各怀心思。成年人没有新手村，只有‘你应该懂的’。",
-      people: [],
-    },
-    {
-      phase: "现实发送账单",
-      text: "本轮操作已经提交，概不撤回。收益和代价正在抢麦，钱包选择了静音。",
-      people: [],
-    },
-  ],
-});
-
 const normalizeResume = (resume, settings) => {
   const fallback = createInitialResume(settings);
   return {
@@ -149,6 +128,16 @@ const normalizeResume = (resume, settings) => {
     experiences: Array.isArray(resume?.experiences) ? resume.experiences : [],
   };
 };
+
+const createStateForSettings = (settings) => ({
+  ...createInitialState(settings.initialCash),
+  bodyProfile: createBodyProfile(settings),
+});
+
+const normalizeStateForSettings = (state, settings, age = settings.startAge) => ({
+  ...normalizeFinancialState(state, settings.initialCash),
+  bodyProfile: normalizeBodyProfile(state?.bodyProfile, settings, age),
+});
 
 export default function App() {
   const [started, setStarted] = useState(false),
@@ -197,9 +186,7 @@ export default function App() {
   const [socialEdges, setSocialEdges] = useState(INITIAL_SOCIAL_EDGES);
   const [historicalContacts, setHistoricalContacts] = useState([]);
   const [month, setMonth] = useState(0),
-    [state, setState] = useState(() =>
-      createInitialState(settings.initialCash),
-    ),
+    [state, setState] = useState(() => createStateForSettings(settings)),
     [relations, setRelations] = useState(INITIAL_RELATIONS),
     [npcProfiles, setNpcProfiles] = useState(() =>
       normalizeNpcInteractionHistories(
@@ -229,8 +216,14 @@ export default function App() {
     .filter((l) => MILESTONE_PATTERN.test(l.title + l.text))
     .slice(-6);
   useEffect(() => {
-    if (!started) setState(createInitialState(settings.initialCash));
-  }, [settings.initialCash, started]);
+    if (!started) setState(createStateForSettings(settings));
+  }, [
+    settings.initialCash,
+    settings.startAge,
+    settings.gender,
+    settings.physicalProfile,
+    started,
+  ]);
   useEffect(() => {
     const handleButtonSound = (event) => {
       const control = event.target.closest("button, label.json-btn");
@@ -289,7 +282,7 @@ export default function App() {
       return;
     }
     setSimulating(true);
-    setSimulationTrace(createTurnLoadingTrace(settings, age));
+    setSimulationTrace(null);
     setSimulationPhase("reading");
     playUiSound("turn", soundEnabled);
     setEventExpanded(false);
@@ -301,7 +294,9 @@ export default function App() {
         model: localStorage.getItem(LLM_STORAGE_KEYS.model) || model,
       };
       let approvalDecision = null;
-      if (Math.random() < SIMULATION_CONFIG.approvalChance) {
+      const freedom =
+        FREEDOM_LEVELS[settings.freedomLevel] || FREEDOM_LEVELS.high;
+      if (Math.random() < freedom.approvalChance) {
         const approvalRequest = await generateApprovalRequest(llmConfig, {
           settings,
           state,
@@ -317,7 +312,6 @@ export default function App() {
           setPendingApproval({ ...approvalRequest, requestId: Date.now() });
         });
       }
-      setSimulationPhase("writing");
       const result = await callSimulator(llmConfig, {
         settings,
         state,
@@ -364,6 +358,10 @@ export default function App() {
         month,
         age,
         monthOfYear,
+        monthsPerTurn: turnMonths,
+        settings,
+        resume,
+        monthlyIncome: result.monthlyIncome ?? state.income ?? 0,
         time: `${age}岁 · ${monthOfYear}月`,
         title: result.title,
       });
@@ -373,6 +371,12 @@ export default function App() {
         health: clamp(state.health + (d.health || 0) + stateDrift.health),
         mood: clamp(state.mood + (d.mood || 0)),
         career: clamp(state.career + (d.career || 0) + stateDrift.career),
+        bodyProfile: evolveBodyProfile(
+          state.bodyProfile,
+          settings,
+          result,
+          nextProtagonistAge,
+        ),
       };
       const nextSettings = {
         ...settings,
@@ -736,7 +740,13 @@ export default function App() {
         savedSettings,
       );
       setSettings(savedSettings);
-      setState(normalizeFinancialState(save.state, savedSettings.initialCash));
+      setState(
+        normalizeStateForSettings(
+          save.state,
+          savedSettings,
+          (savedSettings.startAge ?? 18) + Math.floor((save.month || 0) / 12),
+        ),
+      );
       setRelations(npcData.relations);
       setTurn(save.turn);
       setLogs(save.logs || [createPrologueLog(save.settings)]);
@@ -774,9 +784,11 @@ export default function App() {
           npcData.relations,
           importedSettings,
         );
-        const importedState = normalizeFinancialState(
+        const importedState = normalizeStateForSettings(
           data.state,
-          importedSettings.initialCash,
+          importedSettings,
+          (importedSettings.startAge ?? 18) +
+            Math.floor((data.month || 0) / 12),
         );
         setSettings(importedSettings);
         setState(importedState);
@@ -845,7 +857,7 @@ export default function App() {
     setPlaybackIndex(i);
     if (i === 0) {
       setMonth(0);
-      setState(createInitialState(settings.initialCash));
+      setState(createStateForSettings(settings));
       setRelations(INITIAL_RELATIONS);
       setSocialEdges(INITIAL_SOCIAL_EDGES);
       setHistoricalContacts([]);
@@ -865,7 +877,13 @@ export default function App() {
     if (s) {
       const snapshotSettings = normalizeSettings(s.settings || settings);
       setMonth(s.month);
-      setState(normalizeFinancialState(s.state, snapshotSettings.initialCash));
+      setState(
+        normalizeStateForSettings(
+          s.state,
+          snapshotSettings,
+          (snapshotSettings.startAge ?? 18) + Math.floor((s.month || 0) / 12),
+        ),
+      );
       setRelations(s.relations);
       setNpcProfiles(
         normalizeNpcInteractionHistories(
@@ -923,7 +941,7 @@ export default function App() {
   const reset = () => {
     setStarted(false);
     setMonth(0);
-    setState(createInitialState(settings.initialCash));
+    setState(createStateForSettings(settings));
     setRelations(INITIAL_RELATIONS);
     setSocialEdges(INITIAL_SOCIAL_EDGES);
     setHistoricalContacts([]);

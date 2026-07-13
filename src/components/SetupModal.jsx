@@ -9,11 +9,13 @@ import {
 } from "lucide-react";
 import { IconButton } from "./Common";
 import ParentAdvanced from "./ParentAdvanced";
+import { BODY_TYPES } from "../simulation/bodyModel";
 import { FAMILY_LEVELS, parentsForFamily } from "../data/family";
 import {
   CITY_PRESETS,
   DEFAULT_FEMALE_BIO,
   DEFAULT_MALE_BIO,
+  FREEDOM_LEVELS,
   TALENT_TIPS,
   TRAIT_TIPS,
 } from "../data/setupConfig";
@@ -410,6 +412,16 @@ export default function SetupModal({
                         setSettings({
                           ...settings,
                           gender: x,
+                          physicalProfile: {
+                            ...settings.physicalProfile,
+                            adultHeightCm:
+                              settings.physicalProfile?.adultHeightCm ===
+                              (settings.gender === "女" ? 163 : 175)
+                                ? x === "女"
+                                  ? 163
+                                  : 175
+                                : settings.physicalProfile?.adultHeightCm,
+                          },
                           bio: isDef
                             ? x === "女"
                               ? DEFAULT_FEMALE_BIO
@@ -423,6 +435,48 @@ export default function SetupModal({
                     </button>
                   ))}
                 </div>
+              </label>
+              <label>
+                成年最终身高（cm）
+                <input
+                  type="number"
+                  min="130"
+                  max="220"
+                  value={settings.physicalProfile?.adultHeightCm || 175}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      physicalProfile: {
+                        ...settings.physicalProfile,
+                        adultHeightCm: Math.max(
+                          130,
+                          Math.min(220, +e.target.value),
+                        ),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                初始身材
+                <select
+                  value={settings.physicalProfile?.initialBodyType || "匀称"}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      physicalProfile: {
+                        ...settings.physicalProfile,
+                        initialBodyType: e.target.value,
+                      },
+                    })
+                  }
+                >
+                  {BODY_TYPES.map((bodyType) => (
+                    <option value={bodyType} key={bodyType}>
+                      {bodyType}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 家庭条件
@@ -581,6 +635,30 @@ export default function SetupModal({
                 <option value={12}>12 个月（一年）</option>
               </select>
               <span className="hint">跨度越大，模拟越快，但细节越少</span>
+            </div>
+            <div className="freedom-setting">
+              <div>
+                <b>人生自由度</b>
+                <span>
+                  {FREEDOM_LEVELS[settings.freedomLevel]?.description ||
+                    FREEDOM_LEVELS.medium.description}
+                </span>
+              </div>
+              <div className="segmented" aria-label="人生自由度">
+                {Object.entries(FREEDOM_LEVELS).map(([key, level]) => (
+                  <button
+                    type="button"
+                    className={settings.freedomLevel === key ? "active" : ""}
+                    key={key}
+                    onClick={() =>
+                      setSettings({ ...settings, freedomLevel: key })
+                    }
+                  >
+                    {level.label}
+                    <small>{level.optionCount} 个选项</small>
+                  </button>
+                ))}
+              </div>
             </div>
             {settings.constraints.map((c, i) => (
               <div className="constraint-edit" key={i}>

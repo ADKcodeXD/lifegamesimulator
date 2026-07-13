@@ -1,5 +1,4 @@
 export const SIMULATION_CONFIG = {
-  approvalChance: 0.16,
   saveVersion: 5,
   defaultNpcEmoji: "🙂",
 };

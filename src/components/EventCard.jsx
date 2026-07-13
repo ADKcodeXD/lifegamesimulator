@@ -70,8 +70,8 @@ function SimulationProgress({ settings, trace, phase }) {
           <b>这一段人生正在展开</b>
           <small>
             {phase === "reading"
-              ? `正在读取${settings.name}的人生存档，绝不偷偷一键洗白…`
-              : "本轮操作已提交，现实正在努力憋出一个结果。"}
+              ? `正在读取${settings.name}的当前状态，准备本轮推演…`
+              : "正在生成事件、关系与财务结算，请稍候。"}
           </small>
         </div>
       </header>
@@ -80,8 +80,8 @@ function SimulationProgress({ settings, trace, phase }) {
         <div className="life-unfolding-wait">
           <i />
           <p>
-            <b>CPU 正在冒烟</b>
-            <span>正在计算这次是赢麻了、白忙活，还是喜提人生经验。</span>
+            <b>正在一次性推演本轮人生</b>
+            <span>速度优先：单次请求完成事件生成与统一结算。</span>
           </p>
         </div>
       ) : (

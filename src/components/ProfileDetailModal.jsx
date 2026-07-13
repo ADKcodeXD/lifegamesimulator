@@ -104,6 +104,25 @@ export default function ProfileDetailModal({
                 </b>
               </span>
             </article>
+            <article>
+              <Activity size={19} />
+              <span>
+                <small>身高档案</small>
+                <b>
+                  {state.bodyProfile?.currentHeightCm || "--"} cm
+                  {state.bodyProfile?.currentHeightCm !==
+                    state.bodyProfile?.adultHeightCm &&
+                    ` / 最终 ${state.bodyProfile?.adultHeightCm || "--"} cm`}
+                </b>
+              </span>
+            </article>
+            <article>
+              <UserRound size={19} />
+              <span>
+                <small>动态身材</small>
+                <b>{state.bodyProfile?.bodyType || "匀称"}</b>
+              </span>
+            </article>
           </section>
 
           <section className="profile-detail-section personality-section">
@@ -200,6 +219,9 @@ export default function ProfileDetailModal({
                 ["颜值", model.appearance],
                 ["运动", model.athletic],
                 ["技能", model.skill],
+                ["智力", model.intelligence],
+                ["天赋", model.talent],
+                ["财商", model.financial],
               ].map(([name, value]) => (
                 <article key={name}>
                   <div>

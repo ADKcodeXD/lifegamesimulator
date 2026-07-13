@@ -72,6 +72,27 @@ const SCORE_BANDS = {
     },
     { max: 101, label: "稀缺技能天赋，具备行业头部潜力", multiplier: 3.1 },
   ],
+  intelligence: [
+    { max: 40, label: "理解复杂概念较慢，更依赖重复练习", multiplier: 0.78 },
+    { max: 60, label: "智力普通，可处理常规学习与工作", multiplier: 1 },
+    { max: 75, label: "理解与迁移能力较强", multiplier: 1.35 },
+    { max: 90, label: "擅长高复杂度推理与快速学习", multiplier: 1.85 },
+    { max: 101, label: "极高认知潜力，但仍受人格与环境限制", multiplier: 2.5 },
+  ],
+  talent: [
+    { max: 40, label: "先天潜力普通，成长主要依赖长期投入", multiplier: 0.82 },
+    { max: 60, label: "潜力正常，不形成明显成长加速", multiplier: 1 },
+    { max: 75, label: "较容易在适配领域形成优势", multiplier: 1.3 },
+    { max: 90, label: "具备稀缺潜力，突破上限的概率更高", multiplier: 1.75 },
+    { max: 101, label: "顶级潜能，仍需要机会、训练与选择兑现", multiplier: 2.35 },
+  ],
+  financial: [
+    { max: 40, label: "容易忽略现金流、债务或风险定价", multiplier: 0.72 },
+    { max: 60, label: "财务判断普通，主要依赖经验", multiplier: 1 },
+    { max: 75, label: "能较好管理预算、负债与资产配置", multiplier: 1.35 },
+    { max: 90, label: "擅长识别风险收益与资金效率", multiplier: 1.85 },
+    { max: 101, label: "顶级财商，但无法消除市场风险与运气", multiplier: 2.45 },
+  ],
 };
 
 const traitEffect = (value) => {
@@ -87,6 +108,15 @@ export function buildAbilityModel(settings, state) {
   const appearance = band(settings.talents?.颜值 ?? 50, SCORE_BANDS.appearance);
   const athletic = band(settings.talents?.运动 ?? 50, SCORE_BANDS.athletic);
   const skill = band(settings.talents?.技能 ?? 50, SCORE_BANDS.skill);
+  const intelligence = band(
+    settings.talents?.智力 ?? 50,
+    SCORE_BANDS.intelligence,
+  );
+  const talent = band(settings.talents?.天赋 ?? 50, SCORE_BANDS.talent);
+  const financial = band(
+    settings.talents?.财商 ?? 50,
+    SCORE_BANDS.financial,
+  );
   const traits = Object.fromEntries(
     Object.entries(settings.traits || {}).map(([name, value]) => [
       name,
@@ -97,6 +127,21 @@ export function buildAbilityModel(settings, state) {
     appearance: { score: settings.talents?.颜值 ?? 50, ...appearance },
     athletic: { score: settings.talents?.运动 ?? 50, ...athletic },
     skill: { score: settings.talents?.技能 ?? 50, ...skill },
+    intelligence: {
+      score: settings.talents?.智力 ?? 50,
+      ...intelligence,
+    },
+    talent: { score: settings.talents?.天赋 ?? 50, ...talent },
+    financial: { score: settings.talents?.财商 ?? 50, ...financial },
+    body: {
+      adultHeightCm: state.bodyProfile?.adultHeightCm,
+      currentHeightCm: state.bodyProfile?.currentHeightCm,
+      bodyType: state.bodyProfile?.bodyType ||
+        settings.physicalProfile?.initialBodyType ||
+        "匀称",
+      attractionGuidance:
+        "身高与身材会影响部分人的第一吸引和职业适配，但偏好因人而异，不能线性决定择偶结果。",
+    },
     traits,
     condition: {
       healthMultiplier:
@@ -158,6 +203,7 @@ export function buildRandomEventField(settings, state, turn, month = 0) {
       probability:
         0.012 *
         model.skill.multiplier *
+        Math.sqrt(model.intelligence.multiplier * model.talent.multiplier) *
         curiosity *
         riskMultiplier(risks.opportunity) *
         (1 + worldState.modifiers.opportunityWeight),
@@ -173,16 +219,19 @@ export function buildRandomEventField(settings, state, turn, month = 0) {
       label: "意外财务冲击",
       valence: "adverse",
       probability:
-        0.018 *
+        (0.018 *
         (0.8 + adventure * 0.25) *
         riskMultiplier(risks.financial) *
-        worldState.modifiers.financialShock,
+        worldState.modifiers.financialShock) /
+        Math.max(0.65, model.financial.multiplier),
     },
     {
       key: "fraudOrTrap",
       label: "骗局、误导或灰色诱惑",
       valence: "adverse",
-      probability: 0.009 * adventure * riskMultiplier(risks.financial),
+      probability:
+        (0.009 * adventure * riskMultiplier(risks.financial)) /
+        Math.max(0.7, model.financial.multiplier),
     },
     {
       key: "healthIncident",
@@ -270,7 +319,10 @@ export function buildTurnOutcomeField(settings, state, turn, month = 0) {
   const favorableWeight =
     0.22 +
     risks.opportunity / 400 +
-    Math.max(0, model.skill.multiplier - 1) * 0.025 +
+    Math.max(0, model.skill.multiplier - 1) * 0.02 +
+    Math.max(0, model.intelligence.multiplier - 1) * 0.012 +
+    Math.max(0, model.talent.multiplier - 1) * 0.012 +
+    Math.max(0, model.financial.multiplier - 1) * 0.008 +
     worldState.modifiers.opportunityWeight;
   const adverseWeight =
     0.22 +

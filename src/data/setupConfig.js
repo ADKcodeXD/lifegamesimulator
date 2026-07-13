@@ -12,6 +12,9 @@ export const TALENT_TIPS = {
   颜值: "影响社交第一印象、恋爱概率和人脉拓展",
   运动: "影响健康恢复速度、体育相关机会和抗压能力",
   技能: "影响学习效率、职业晋升速度和副业收入",
+  智力: "影响理解速度、复杂问题处理和高认知职业机会",
+  天赋: "影响长期成长上限、突破速度和跨领域潜力",
+  财商: "影响消费判断、投资风险、债务管理和资产积累",
 };
 export const TRAIT_TIPS = {
   理性: "影响决策质量、风险评估和投资判断力",
@@ -19,8 +22,44 @@ export const TRAIT_TIPS = {
   家庭: "影响家庭关系维护、婚恋决策和亲情投入",
   好奇: "影响探索新机会的动力、学习意愿和转行勇气",
 };
+export const FREEDOM_LEVELS = {
+  low: {
+    label: "低",
+    optionCount: 2,
+    approvalChance: 0.08,
+    description: "每次分岔提供 2 个方案，支线较少，人生推进更快。",
+    prompt:
+      "行动空间较集中。优先当前生活圈内最直接、最现实的路径，每轮避免同时开启多条支线。",
+  },
+  medium: {
+    label: "中",
+    optionCount: 3,
+    approvalChance: 0.16,
+    description: "每次分岔提供 3 个方案，在稳定推进与探索之间平衡。",
+    prompt:
+      "行动空间适中。既考虑惯常路径，也允许一条符合人物条件的新方向。",
+  },
+  high: {
+    label: "高",
+    optionCount: 4,
+    approvalChance: 0.28,
+    description: "每次分岔提供 4 个方案，支线更多，出现分岔也更频繁。",
+    prompt:
+      "行动空间宽广。主动考虑跨圈层、转行、副业、迁移、关系推进或拒绝等不同路径，但最终决定仍须符合人物与现实条件。",
+  },
+};
 export const normalizeSettings = (s = {}) => {
   const family = s.family || "modest";
+  const freedomLevel = "high";
+  const defaultTalents = {
+    颜值: 55,
+    运动: 48,
+    技能: 72,
+    智力: 62,
+    天赋: 58,
+    财商: 50,
+  };
+  const defaultHeight = s.gender === "女" ? 163 : 175;
   const settings = {
     world:
       "2026 年，中国一座人口约 400 万的二线城市。AI 加速渗透就业市场，房地产从普涨转向分化。",
@@ -28,15 +67,27 @@ export const normalizeSettings = (s = {}) => {
     gender: "男",
     family,
     initialCash: 1000,
-    talents: { 颜值: 55, 运动: 48, 技能: 72 },
+    talents: defaultTalents,
+    physicalProfile: {
+      adultHeightCm: defaultHeight,
+      initialBodyType: "匀称",
+    },
     bio: DEFAULT_MALE_BIO,
     startAge: 18,
     endAge: 80,
     monthsPerTurn: 6,
+    freedomLevel,
     traits: { 理性: 72, 冒险: 38, 家庭: 64, 好奇: 81 },
     constraints: DEFAULT_CONSTRAINTS,
     ...s,
     family,
+    freedomLevel,
+    talents: { ...defaultTalents, ...(s.talents || {}) },
+    physicalProfile: {
+      adultHeightCm:
+        Number(s.physicalProfile?.adultHeightCm) || defaultHeight,
+      initialBodyType: s.physicalProfile?.initialBodyType || "匀称",
+    },
     parents: s.parents?.length ? s.parents : parentsForFamily(family),
   };
   return {

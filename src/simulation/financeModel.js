@@ -144,6 +144,140 @@ function transactionDeltas(transaction) {
   return { kind, cashDelta, assetDelta, liabilityDelta };
 }
 
+function recurringTransactions(current, result, context) {
+  const months = Math.max(1, finite(context.monthsPerTurn, 1));
+  const age = finite(context.age, 18);
+  const monthlyIncome = Math.max(
+    0,
+    finite(context.monthlyIncome, result.monthlyIncome ?? current.income),
+  );
+  const modeled = Array.isArray(result.financialTransactions)
+    ? result.financialTransactions.filter(Boolean)
+    : [];
+  const additions = [];
+  const hasRegularIncome = modeled.some(
+    (item) =>
+      item.kind === "income" &&
+      /工资|薪资|薪水|报酬|养老金|固定收入|生活费/.test(
+        `${item.label || ""}${item.note || ""}`,
+      ),
+  );
+  if (monthlyIncome > 0 && !hasRegularIncome) {
+    additions.push({
+      kind: "income",
+      account: "cash",
+      amount: monthlyIncome * months,
+      cashDelta: monthlyIncome * months,
+      assetDelta: 0,
+      liabilityDelta: 0,
+      label: age < 18 ? "家庭生活费" : "阶段固定收入",
+      note: `${months}个月的稳定现金收入自动入账`,
+    });
+  }
+
+  if (age >= 18) {
+    const student = /在校|学生|就读/.test(
+      `${context.resume?.employmentStatus || ""}${context.resume?.currentRole || ""}`,
+    );
+    const world = context.settings?.world || "";
+    const cityMultiplier = /北京|上海|深圳|纽约|旧金山|东京|新加坡/.test(
+      world,
+    )
+      ? 1.35
+      : /小县城|乡镇|农村/.test(world)
+        ? 0.72
+        : 1;
+    const ownsHome = (current.assets?.realEstate || 0) > 0;
+    const expenseCategories = [
+      {
+        key: "housing",
+        pattern: /房租|居住|住宿|物业|水电|燃气/,
+        label: ownsHome ? "居住维护与水电" : "住房与水电",
+        monthly: ownsHome ? 650 : student ? 950 : 1900,
+      },
+      {
+        key: "food",
+        pattern: /餐饮|吃饭|伙食|买菜|外卖|日用/,
+        label: "餐饮与日用",
+        monthly: student ? 1050 : 1450,
+      },
+      {
+        key: "transport",
+        pattern: /通勤|交通|公交|地铁|打车|油费/,
+        label: "通勤与交通",
+        monthly: student ? 260 : 520,
+      },
+      {
+        key: "leisure",
+        pattern: /娱乐|社交|聚会|电影|游戏|爱好|酒吧|咖啡/,
+        label: "娱乐、社交与爱好",
+        monthly: Math.max(
+          student ? 320 : 480,
+          Math.min(2600, Math.round(monthlyIncome * 0.07)),
+        ),
+      },
+    ];
+    for (const category of expenseCategories) {
+      const alreadyModeled = modeled.some(
+        (item) =>
+          item.kind === "expense" &&
+          category.pattern.test(`${item.label || ""}${item.note || ""}`),
+      );
+      if (alreadyModeled) continue;
+      const amount = Math.round(category.monthly * cityMultiplier) * months;
+      additions.push({
+        kind: "expense",
+        account: "cash",
+        amount,
+        cashDelta: -amount,
+        assetDelta: 0,
+        liabilityDelta: 0,
+        label: category.label,
+        note: `${months}个月的常规${category.label}自动结算`,
+      });
+    }
+
+    const focus = result.lifeFocusAudit?.selected?.key;
+    const focusExpense = {
+      travel: {
+        pattern: /旅行|出游|度假|住宿|机票|车票|门票/,
+        label: "旅行与出游",
+        amount: Math.max(900, Math.min(8000, Math.round(monthlyIncome * 0.45))),
+      },
+      consumption: {
+        pattern: /购物|消费|衣服|数码|家居|装修/,
+        label: "个人购物与消费",
+        amount: Math.max(500, Math.min(5000, Math.round(monthlyIncome * 0.22))),
+      },
+      leisure: {
+        pattern: /娱乐|聚会|电影|游戏|演出|酒吧|爱好/,
+        label: "额外娱乐活动",
+        amount: Math.max(300, Math.min(3000, Math.round(monthlyIncome * 0.12))),
+      },
+    }[focus];
+    if (
+      focusExpense &&
+      !modeled.some(
+        (item) =>
+          item.kind === "expense" &&
+          focusExpense.pattern.test(`${item.label || ""}${item.note || ""}`),
+      )
+    ) {
+      additions.push({
+        kind: "expense",
+        account: "cash",
+        amount: focusExpense.amount,
+        cashDelta: -focusExpense.amount,
+        assetDelta: 0,
+        liabilityDelta: 0,
+        label: focusExpense.label,
+        note: `本轮${result.lifeFocusAudit.selected.label}主线的实际消费`,
+      });
+    }
+  }
+  return additions;
+}
+
 export function applyFinancialTurn(state, result, context = {}) {
   const current = normalizeFinancialState(state, state?.cash ?? 0);
   const previousSummary = calculateFinancialSummary(current);
@@ -151,9 +285,11 @@ export function applyFinancialTurn(state, result, context = {}) {
   const assets = { ...current.assets };
   const liabilities = { ...current.liabilities };
   const entries = [];
-  const transactions = Array.isArray(result.financialTransactions)
+  const modeledTransactions = Array.isArray(result.financialTransactions)
     ? result.financialTransactions.filter(Boolean)
     : [];
+  const automaticTransactions = recurringTransactions(current, result, context);
+  const transactions = [...modeledTransactions, ...automaticTransactions];
 
   const appendEntry = (transaction, index, deltas) => {
     const isLiability = deltas.liabilityDelta !== 0;
@@ -202,7 +338,9 @@ export function applyFinancialTurn(state, result, context = {}) {
     (sum, entry) => sum + entry.cashDelta,
     0,
   );
-  const reportedCashflow = Number.isFinite(Number(result.cashflow))
+  const reportedCashflow = automaticTransactions.length
+    ? transactionCashflow
+    : Number.isFinite(Number(result.cashflow))
     ? finite(result.cashflow)
     : transactions.length
       ? transactionCashflow

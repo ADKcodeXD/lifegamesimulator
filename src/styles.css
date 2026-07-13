@@ -7776,3 +7776,53 @@ button {
   font-size: 13px;
   line-height: 1.65;
 }
+
+.freedom-setting {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 0.85fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 76px;
+  margin: 14px 0;
+  padding: 13px 15px;
+  border: 1px solid #e6e2ed;
+  border-radius: 12px;
+  background: #f8f7fa;
+}
+.freedom-setting > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+.freedom-setting > div:first-child b {
+  color: #323044;
+  font-size: 13px;
+}
+.freedom-setting > div:first-child span {
+  color: #85818f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.setup-modal .freedom-setting .segmented {
+  min-height: 48px;
+}
+.setup-modal .freedom-setting .segmented button {
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+.freedom-setting .segmented button small {
+  color: #9a96a5;
+  font-size: 9px;
+  font-weight: 600;
+}
+.freedom-setting .segmented button.active small {
+  color: #786bc5;
+}
+@media (max-width: 720px) {
+  .freedom-setting {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
