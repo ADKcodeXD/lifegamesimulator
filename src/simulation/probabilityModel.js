@@ -359,6 +359,12 @@ export function buildLifeStageField(
         0.52,
         "好奇和身体发展比理性计划更重要",
       ],
+      [
+        "earlyAdversity",
+        "早期照护创伤或重大分离",
+        0.12,
+        "照护忽视、家庭暴力、重大疾病、事故或重要照护者离开都可能影响安全感",
+      ],
     ];
   } else if (age < 12) {
     stage = "儿童同伴与兴趣形成";
@@ -374,6 +380,12 @@ export function buildLifeStageField(
         "兴趣尝试与放弃",
         0.48 * curiosity,
         "允许三分钟热度、受挫或因同伴改变兴趣",
+      ],
+      [
+        "childhoodAdversity",
+        "童年创伤或边界受损",
+        0.16,
+        "允许出现霸凌、忽视、家暴、丧失、控制或侵害，并真实影响信任和自我保护",
       ],
     ];
   } else if (age < 18) {
@@ -396,6 +408,12 @@ export function buildLifeStageField(
         "与家庭争取边界",
         0.42 * Math.max(0.45, 2.1 - family),
         "允许顶嘴、隐瞒、妥协或事后后悔",
+      ],
+      [
+        "adolescentAdversity",
+        "青春期创伤与安全危机",
+        0.14,
+        "霸凌、家庭暴力、控制、诱骗、侵害或重大丧失可能改变安全感与亲密边界",
       ],
     ];
   } else if (age < 26) {

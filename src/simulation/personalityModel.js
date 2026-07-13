@@ -87,6 +87,15 @@ function fallbackUpdate(result, context) {
   );
   const severeSocial = changes.some((item) => Number(item.delta) <= -18);
   const repaired = /和解|复合|重归于好|冰释前嫌|修复关系/.test(text);
+  if (/创伤|虐待|侵害|性侵|性骚扰|诱骗|家暴|霸凌|照护忽视|目睹暴力/.test(text))
+    return {
+      key: "traumaResponse",
+      dimension: "security",
+      title: "安全感受到冲击",
+      tendency: "在相似环境中更容易警觉，需要更稳定的支持才能重新确认安全",
+      intensity: 3,
+      trigger: result.title,
+    };
   if (/出轨|背叛|劈腿|欺骗感情/.test(text) && romantic)
     return { key: "romanticCaution", intensity: 3, trigger: result.title };
   if (family)
