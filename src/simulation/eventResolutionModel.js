@@ -1,4 +1,5 @@
 import { describeAbilityScore, describeScore } from "./scoreCalibration.js";
+import { interestFitForLinks } from "./interestModel.js";
 
 const clamp = (value, min = 0, max = 1) =>
   Math.max(min, Math.min(max, Number(value) || 0));
@@ -20,6 +21,7 @@ const driveScores = (settings, state) => ({
   自主: -describeScore(settings.traits?.家庭 ?? 50).zScore * 0.45,
   归属:
     describeAbilityScore("社交", settings.talents?.社交 ?? 50).zScore * 0.35,
+  兴趣: 1,
   emotion: (Number(state.emotion ?? state.mood ?? 72) - 50) / 25,
 });
 
@@ -45,11 +47,35 @@ export function resolveCharacterDecision(
       0,
     );
     const actionCapacity = clamp(0.55 + drives.emotion * 0.18, 0.15, 1.1);
+    const interestEffects = choice.interestEffects || [];
+    const interestAlignment = interestEffects.length
+      ? interestEffects.reduce((sum, effect) => {
+          const fit = interestFitForLinks(
+            [
+              {
+                interestId: effect.interestId,
+                label: effect.label,
+                mode: effect.action === "explore" ? "discovery" : "existing",
+                relevance: effect.intensity,
+              },
+            ],
+            payload.simulation?.interests,
+          );
+          const direction = ["avoid", "abandon"].includes(effect.action)
+            ? -1
+            : 1;
+          return sum + fit * direction;
+        }, 0) / interestEffects.length
+      : 0;
     const effortCost =
       Number(choice.effort || 0) * Math.max(0, 0.75 - actionCapacity);
     const utility =
-      alignment + actionCapacity * 0.45 - effortCost + (random() - 0.5) * 0.7;
-    return { ...choice, utility };
+      alignment +
+      interestAlignment * 0.55 +
+      actionCapacity * 0.45 -
+      effortCost +
+      (random() - 0.5) * 0.7;
+    return { ...choice, utility, interestAlignment };
   });
   const selected = weightedPick(
     scored.map((choice) => [choice, Math.exp(choice.utility / 0.9)]),
@@ -61,6 +87,7 @@ export function resolveCharacterDecision(
       id: choice.id,
       action: choice.action,
       utility: Number(choice.utility.toFixed(3)),
+      interestAlignment: Number(choice.interestAlignment.toFixed(3)),
     })),
   };
 }

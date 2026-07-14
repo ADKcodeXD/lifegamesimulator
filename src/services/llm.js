@@ -467,9 +467,12 @@ function buildEmergentTurnPrompt({
 7. worldEvents只有选中事件或已存在世界进程确实推动世界变化时才填写，否则为空。不得根据被省略的原始世界种子自行制造热点。
 8. 所有状态描述以本轮结束时${endAge}岁为准。本轮跨度${months}个月。
 9. 不增加选中事件之外的第二条主线，不把损失包装成成长，不写空泛总结。
+10. event写成260到420字的连续具体过程，并沿着同一因果链展开3到5个storyBeats；每个节点必须推进处境、互动、决定或结果，不能只是换句话复述。
+11. 优先吸收selectedEvent.developmentBeats，但要把它们写成人物实际经历。storyBeats按时间顺序排列，不能借“丰富故事”插入无关转职、AI、编程、家庭冲突等预制桥段。
+12. 兴趣不是装饰：selectedEvent.interestLinks与人物选择中的interestEffects必须影响注意力、投入意愿或行动方式；不得擅自宣布兴趣永久形成或消失，数值变化由代码结算。
 
 只输出一个JSON对象，必须包含以下字段：
-{"title":"","summary":"80到120字","tag":"","event":"具体过程","thought":"","decision":"","reason":"","relationshipSummary":"","intimacySummary":"","gains":[],"losses":[],"skillsGained":[],"skillsUsed":[],"skillsAvailable":[],"skillsLost":[],"physicalStatus":{"label":"健康","detail":""},"learningStatus":{"stage":"","label":"","detail":""},"cashflow":0,"financialTransactions":[],"roi":"无","stateDelta":{"cash":0,"debt":0,"health":0,"emotion":0,"career":0},"traitDelta":{"决策风格":0,"家庭":0,"好奇":0},"relationshipChanges":[],"npcRelationshipChanges":[],"npcProfiles":[],"npcLifecycleUpdates":[],"resumeUpdate":{"currentRole":"","organization":"","employmentStatus":"","education":"","skills":[],"entry":null},"riskShifts":[{"name":"职业跃迁","value":0,"trend":"持平"},{"name":"财务危机","value":0,"trend":"持平"},{"name":"健康事件","value":0,"trend":"持平"},{"name":"关系冲击","value":0,"trend":"持平"}],"worldEvents":[],"worldStateUpdate":null,"worldChange":null,"log":"","statusLabel":"","monthlyIncome":0,"personalityUpdate":{"changed":false},"bodyUpdate":{"bodyType":"${payload.state.bodyProfile?.bodyType || "匀称"}","reason":"维持"},"death":{"occurred":false,"cause":"","age":null,"summary":""}}`;
+{"title":"","summary":"120到180字","tag":"","storyBeats":[{"phase":"阶段名称","title":"节点标题","detail":"这个节点具体发生了什么","people":["相关人物"]}],"event":"260到420字的完整具体过程","thought":"","decision":"","reason":"","relationshipSummary":"","intimacySummary":"","gains":[],"losses":[],"skillsGained":[],"skillsUsed":[],"skillsAvailable":[],"skillsLost":[],"physicalStatus":{"label":"健康","detail":""},"learningStatus":{"stage":"","label":"","detail":""},"cashflow":0,"financialTransactions":[],"roi":"无","stateDelta":{"cash":0,"debt":0,"health":0,"emotion":0,"career":0},"traitDelta":{"决策风格":0,"家庭":0,"好奇":0},"relationshipChanges":[],"npcRelationshipChanges":[],"npcProfiles":[],"npcLifecycleUpdates":[],"resumeUpdate":{"currentRole":"","organization":"","employmentStatus":"","education":"","skills":[],"entry":null},"riskShifts":[{"name":"职业跃迁","value":0,"trend":"持平"},{"name":"财务危机","value":0,"trend":"持平"},{"name":"健康事件","value":0,"trend":"持平"},{"name":"关系冲击","value":0,"trend":"持平"}],"worldEvents":[],"worldStateUpdate":null,"worldChange":null,"log":"","statusLabel":"","monthlyIncome":0,"personalityUpdate":{"changed":false},"bodyUpdate":{"bodyType":"${payload.state.bodyProfile?.bodyType || "匀称"}","reason":"维持"},"death":{"occurred":false,"cause":"","age":null,"summary":""}}`;
 }
 
 export async function callSimulator({ apiKey, endpoint, model }, payload) {
@@ -608,10 +611,51 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
     (parsed.skillsLost || []).length > 0;
   let hasMaterialDownside =
     (parsed.losses || []).length > 0 || hasSettledDownside;
+  const fallbackStoryBeats = (selectedEvent.developmentBeats || []).map(
+    (beat, index) => ({
+      phase: `阶段${index + 1}`,
+      title:
+        typeof beat === "string"
+          ? beat.slice(0, 24)
+          : beat.title || beat.phase || "进展",
+      detail:
+        typeof beat === "string"
+          ? beat
+          : beat.detail ||
+            beat.text ||
+            beat.situation ||
+            beat.causalLink ||
+            selectedEvent.premise,
+      people: selectedEvent.actors
+        .filter((name) => name !== "主角")
+        .slice(0, 3),
+    }),
+  );
+  const storyBeats = (
+    Array.isArray(parsed.storyBeats) && parsed.storyBeats.length
+      ? parsed.storyBeats
+      : fallbackStoryBeats
+  )
+    .map((beat, index) => ({
+      phase: String(beat?.phase || `阶段${index + 1}`).slice(0, 16),
+      title: String(beat?.title || beat?.phase || "进展").slice(0, 30),
+      detail: String(beat?.detail || beat?.text || "").slice(0, 180),
+      people: (Array.isArray(beat?.people) ? beat.people : [])
+        .map((person) => String(person?.name || person).slice(0, 30))
+        .filter(Boolean)
+        .slice(0, 4),
+    }))
+    .filter((beat) => beat.detail)
+    .slice(0, 5);
   const result = {
     ...parsed,
     decision: decision.selected.action,
-    event: parsed.event || selectedEvent.premise,
+    event:
+      parsed.event ||
+      [selectedEvent.premise, ...storyBeats.map((beat) => beat.detail)].join(
+        "。",
+      ),
+    storyBeats,
     stateDelta,
     losses: [...(parsed.losses || [])],
     worldEvents: Array.isArray(parsed.worldEvents)
@@ -688,6 +732,7 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
   return {
     ...result,
     emergentEvent: selectedEvent,
+    emergentDecision: decision.selected,
     simulationTrace: {
       activeContext,
       candidates: candidateSelection.scored,

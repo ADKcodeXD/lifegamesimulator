@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveEventOutcome } from "./eventResolutionModel.js";
+import {
+  resolveCharacterDecision,
+  resolveEventOutcome,
+} from "./eventResolutionModel.js";
+import { parseInitialInterests } from "./interestModel.js";
 
 const candidate = {
   difficulty: 0.5,
@@ -62,4 +66,51 @@ test("unrelated ability does not leak into event outcome", () => {
     exceptionalAppearance.probabilities,
     averageAppearance.probabilities,
   );
+});
+
+test("a strong interest favors engagement over abandoning it", () => {
+  const interests = parseInitialInterests("摄影");
+  const result = resolveCharacterDecision(
+    {
+      choices: [
+        {
+          id: "engage",
+          action: "继续拍摄",
+          drives: {},
+          interestEffects: [
+            {
+              interestId: interests[0].id,
+              action: "engage",
+              intensity: 0.8,
+            },
+          ],
+          effort: 0.4,
+        },
+        {
+          id: "abandon",
+          action: "卖掉相机",
+          drives: {},
+          interestEffects: [
+            {
+              interestId: interests[0].id,
+              action: "abandon",
+              intensity: 0.8,
+            },
+          ],
+          effort: 0.4,
+        },
+      ],
+    },
+    {
+      settings: { traits: {}, talents: {} },
+      state: { emotion: 70 },
+      simulation: { interests },
+    },
+    () => 0.5,
+  );
+  const engagement = result.utilities.find((item) => item.id === "engage");
+  const abandonment = result.utilities.find((item) => item.id === "abandon");
+  assert.ok(engagement.interestAlignment > 0);
+  assert.ok(abandonment.interestAlignment < 0);
+  assert.ok(engagement.utility > abandonment.utility);
 });

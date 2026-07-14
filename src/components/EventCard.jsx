@@ -156,6 +156,20 @@ export default function EventCard({
   const gainedSkills = normalizeSkills(turn.skillsGained || []);
   const lostSkills = normalizeSkills(turn.skillsLost || []);
   const usedSkills = normalizeSkills(turn.skillsUsed || []);
+  const storyBeats = Array.isArray(turn.storyBeats)
+    ? turn.storyBeats.slice(0, 5)
+    : [];
+  const interestChanges = (turn.interestChanges || []).map((change) => {
+    if (change.type === "discovered") return `发现 ${change.label}`;
+    if (change.status === "dormant") return `${change.label} 暂时搁置`;
+    if (change.delta > 0) return `${change.label} +${change.delta}`;
+    if (change.delta < 0) return `${change.label} ${change.delta}`;
+    return `${change.label} 热度变化`;
+  });
+  const currentInterests = (turn.interests || [])
+    .filter((interest) => interest.status === "active")
+    .slice(0, 6)
+    .map((interest) => `${interest.label} ${Math.round(interest.affinity)}`);
   const intro =
     turn.summary ||
     turn.log ||
@@ -229,6 +243,20 @@ export default function EventCard({
             <div className="stage-overview">
               {intro && <p className="stage-intro">{intro}</p>}
 
+              {!!storyBeats.length && (
+                <div className="stage-story-path" aria-label="本轮故事进展">
+                  {storyBeats.map((beat, index) => (
+                    <article key={`${beat.phase}-${beat.title}-${index}`}>
+                      <i>{index + 1}</i>
+                      <div>
+                        <small>{beat.phase}</small>
+                        <b>{beat.title}</b>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
               {turn.approval && (
                 <div className="stage-approval-result">
                   <span>AGENT APPROVED</span>
@@ -265,6 +293,16 @@ export default function EventCard({
                   label="本轮使用"
                   tone="skill-used"
                   items={usedSkills}
+                />
+                <TagGroup
+                  label="兴趣变化"
+                  tone="interest"
+                  items={interestChanges}
+                />
+                <TagGroup
+                  label="当前兴趣"
+                  tone="interest-current"
+                  items={currentInterests}
                 />
                 <TagGroup
                   label="失去"
@@ -348,6 +386,23 @@ export default function EventCard({
 
             {eventExpanded && (
               <div className="event-details">
+                {!!storyBeats.length && (
+                  <div className="detail-block story-detail">
+                    <b>故事进展</b>
+                    <div>
+                      {storyBeats.map((beat, index) => (
+                        <article key={`${beat.phase}-${index}`}>
+                          <i>{index + 1}</i>
+                          <span>
+                            <small>{beat.phase}</small>
+                            <strong>{beat.title}</strong>
+                            <p>{beat.detail}</p>
+                          </span>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {turn.event && (
                   <div className="detail-block">
                     <b>事件经过</b>

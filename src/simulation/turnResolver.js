@@ -24,6 +24,7 @@ import {
   reconcileEmotionRiskShifts,
 } from "./emotionModel";
 import { advanceSimulationState } from "./simulationState";
+import { summarizeInterests } from "./interestModel";
 
 export function resolveTurn(current, result, approvalDecision = null) {
   const {
@@ -262,6 +263,7 @@ export function resolveTurn(current, result, approvalDecision = null) {
     decision: result.decision,
     reason: result.reason,
     summary: result.summary || "",
+    storyBeats: result.storyBeats || [],
     gains: result.gains || [],
     losses: result.losses || [],
     cashflow: financialTurn.cashflow,
@@ -296,6 +298,7 @@ export function resolveTurn(current, result, approvalDecision = null) {
     approval: approvalDecision,
     domainEvents: [],
     emergentEvent: result.emergentEvent || null,
+    emergentDecision: result.emergentDecision || null,
     simulationTrace: result.simulationTrace || null,
   };
   const nextLogs = [...logs, nextLog];
@@ -318,6 +321,19 @@ export function resolveTurn(current, result, approvalDecision = null) {
     month: nextMonth,
     turnNumber: nextLogs.length - 1,
   });
+  const interestChanges = nextSimulation.lastInterestChanges || [];
+  const currentInterests = nextSimulation.interests || [];
+  nextTurn.interestChanges = interestChanges;
+  nextTurn.interests = currentInterests;
+  nextLog.interestChanges = interestChanges;
+  nextLog.interests = currentInterests;
+  nextSettings.bio = {
+    ...(nextSettings.bio || {}),
+    hobbies:
+      summarizeInterests(nextSimulation.interests) ||
+      nextSettings.bio?.hobbies ||
+      "暂无明确兴趣",
+  };
   const snapshot = createGameSnapshot({
     month: nextMonth,
     state: nextState,

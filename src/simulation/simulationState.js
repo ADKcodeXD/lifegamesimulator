@@ -1,4 +1,9 @@
 import { recordEventSignature, signatureFromResult } from "./topicLedger.js";
+import {
+  advanceInterests,
+  normalizeInterests,
+  parseInitialInterests,
+} from "./interestModel.js";
 
 const asArray = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
 const clamp = (value, min = 0, max = 100) =>
@@ -37,7 +42,7 @@ const routineProcess = ({ resume = {}, month = 0 }) => ({
 export function createInitialSimulationState(context = {}) {
   const { relations = [], resume = {}, month = 0 } = context;
   return {
-    version: 1,
+    version: 2,
     processes: [routineProcess({ resume, month })],
     worldProcesses: seedWorldProcesses(context.settings?.world),
     npcAgendas: Object.fromEntries(
@@ -59,6 +64,8 @@ export function createInitialSimulationState(context = {}) {
     openLoops: [],
     topicLedger: [],
     causalFacts: [],
+    interests: parseInitialInterests(context.settings?.bio?.hobbies),
+    lastInterestChanges: [],
     lastTrace: null,
   };
 }
@@ -69,7 +76,7 @@ export function normalizeSimulationState(raw, context = {}) {
   return {
     ...fallback,
     ...source,
-    version: 1,
+    version: 2,
     processes: asArray(source.processes).length
       ? asArray(source.processes).slice(-20)
       : fallback.processes,
@@ -81,6 +88,11 @@ export function normalizeSimulationState(raw, context = {}) {
     openLoops: asArray(source.openLoops).slice(-20),
     topicLedger: asArray(source.topicLedger).slice(-40),
     causalFacts: asArray(source.causalFacts).slice(-50),
+    interests: normalizeInterests(
+      source.interests,
+      context.settings?.bio?.hobbies,
+    ),
+    lastInterestChanges: asArray(source.lastInterestChanges).slice(-6),
   };
 }
 
@@ -199,6 +211,12 @@ export function advanceSimulationState(raw, result = {}, context = {}) {
       process,
     ]),
   );
+  const interestUpdate = advanceInterests(current.interests, {
+    candidate: result.emergentEvent,
+    decision: result.emergentDecision,
+    outcome: result.outcomeAudit,
+    turn,
+  });
   return {
     ...current,
     processes: updateProcesses(current.processes, result, turn),
@@ -206,6 +224,8 @@ export function advanceSimulationState(raw, result = {}, context = {}) {
       .filter((process) => process.status !== "resolved")
       .slice(-12),
     npcAgendas: updateNpcAgendas(current.npcAgendas, result, turn),
+    interests: interestUpdate.interests,
+    lastInterestChanges: interestUpdate.changes,
     topicLedger: recordEventSignature(
       current.topicLedger,
       signature,
@@ -237,11 +257,11 @@ export function migrateGameSave(save = {}) {
   });
   return {
     ...save,
-    version: 8,
+    version: 9,
     simulation,
     history: asArray(save.history).map((snapshot) => ({
       ...snapshot,
-      version: 8,
+      version: 9,
       simulation: normalizeSimulationState(snapshot.simulation, {
         settings: snapshot.settings,
         relations: snapshot.relations,

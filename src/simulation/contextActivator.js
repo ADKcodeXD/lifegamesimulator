@@ -112,6 +112,10 @@ export function buildActiveContext(payload, simulation, random = Math.random) {
       id: "state.condition",
       value: `健康${state.health}，情绪${state.emotion ?? state.mood ?? 72}，事业状态${state.career}`,
     },
+    ...simulation.interests.slice(0, 8).map((interest) => ({
+      id: `interest.${interest.id}`,
+      value: `${interest.label}；兴趣强度${interest.affinity}；近期投入${interest.momentum}；状态${interest.status}`,
+    })),
     ...simulation.processes
       .filter((process) => process.status === "active")
       .slice(0, 6)
@@ -164,6 +168,7 @@ export function buildActiveContext(payload, simulation, random = Math.random) {
       education: resume.education,
       personality: settings.bio?.personality,
       hobbies: settings.bio?.hobbies,
+      interests: simulation.interests.slice(0, 8),
       traits: settings.traits,
       abilities: Object.fromEntries(
         Object.entries(settings.talents || {}).map(([name, value]) => {

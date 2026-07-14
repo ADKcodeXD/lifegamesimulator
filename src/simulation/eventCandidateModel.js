@@ -1,7 +1,8 @@
 import { repetitionPenalty } from "./topicLedger.js";
+import { interestFitForLinks } from "./interestModel.js";
 
 export const ABILITY_KEYS = ["颜值", "运动", "智力", "天赋", "财商", "社交"];
-export const DRIVE_KEYS = ["好奇", "安全", "家庭", "自主", "归属"];
+export const DRIVE_KEYS = ["好奇", "安全", "家庭", "自主", "归属", "兴趣"];
 
 const clamp = (value, min = 0, max = 1) =>
   Math.max(min, Math.min(max, Number(value) || 0));
@@ -26,6 +27,14 @@ export function normalizeCandidate(candidate = {}, index = 0) {
     motivations: list(choice.motivations, 4).map((item) => compact(item, 50)),
     barriers: list(choice.barriers, 4).map((item) => compact(item, 50)),
     drives: normalizeWeights(choice.drives, DRIVE_KEYS),
+    interestEffects: list(choice.interestEffects, 4).map((effect) => ({
+      interestId: compact(effect.interestId, 60),
+      label: compact(effect.label, 30),
+      action: ["engage", "explore", "avoid", "abandon"].includes(effect.action)
+        ? effect.action
+        : "engage",
+      intensity: clamp(effect.intensity ?? 0.5),
+    })),
     effort: clamp(choice.effort ?? 0.5),
   }));
   return {
@@ -45,6 +54,20 @@ export function normalizeCandidate(candidate = {}, index = 0) {
       : null,
     triggerMechanism: compact(candidate.triggerMechanism, 100),
     dramaticQuestion: compact(candidate.dramaticQuestion, 120),
+    developmentBeats: list(candidate.developmentBeats, 5).map(
+      (beat, beatIndex) => ({
+        phase: compact(beat.phase || `阶段${beatIndex + 1}`, 30),
+        situation: compact(beat.situation || beat.detail, 140),
+        causalLink: compact(beat.causalLink, 100),
+      }),
+    ),
+    interestLinks: list(candidate.interestLinks, 4).map((link) => ({
+      interestId: compact(link.interestId, 60),
+      label: compact(link.label, 30),
+      mode: link.mode === "discovery" ? "discovery" : "existing",
+      relevance: clamp(link.relevance ?? 0.5),
+      reason: compact(link.reason, 100),
+    })),
     choices,
     demands: {
       exposure: normalizeWeights(candidate.demands?.exposure),
@@ -109,6 +132,20 @@ export function auditCandidate(candidate, context) {
     );
   });
   if (repeatsCoolingConflict) errors.push("relationship-cooldown");
+  const interestIds = new Set(
+    (context.protagonist.interests || []).map((item) => item.id),
+  );
+  const invalidInterestLink = candidate.interestLinks.some(
+    (link) =>
+      link.mode !== "discovery" &&
+      (!link.interestId || !interestIds.has(link.interestId)),
+  );
+  const invalidDiscovery = candidate.interestLinks.some(
+    (link) =>
+      link.mode === "discovery" && (!link.label || supportedFacts.length < 1),
+  );
+  if (invalidInterestLink) errors.push("unknown-interest");
+  if (invalidDiscovery) errors.push("unsupported-interest-discovery");
   return {
     valid: errors.length === 0,
     errors,
@@ -151,6 +188,10 @@ export function scoreCandidate(candidate, context, simulation, turnNumber) {
         return sum + ((score - 50) / 15) * Number(weight || 0);
       }, 0) / exposureWeight
     : 0;
+  const interestFit = interestFitForLinks(
+    candidate.interestLinks,
+    context.protagonist.interests,
+  );
   const novelty = 1 - repetition;
   const unsupportedLeap = audit.errors.includes("unsupported")
     ? 1
@@ -163,6 +204,7 @@ export function scoreCandidate(candidate, context, simulation, turnNumber) {
     urgency * 1.2 +
     npcAgency * 0.8 +
     exposureFit * 0.32 +
+    interestFit * 0.48 +
     novelty * 0.8 -
     unsupportedLeap * 2.2 -
     repetition * 1.6 -
@@ -176,6 +218,7 @@ export function scoreCandidate(candidate, context, simulation, turnNumber) {
     continuity,
     urgency,
     exposureFit,
+    interestFit,
   };
 }
 
@@ -213,6 +256,7 @@ export function selectCandidate(
       score: Number(item.score.toFixed(3)),
       repetition: Number(item.repetition.toFixed(3)),
       exposureFit: Number(item.exposureFit.toFixed(3)),
+      interestFit: Number(item.interestFit.toFixed(3)),
       valid: item.audit.valid,
       errors: item.audit.errors,
     })),
