@@ -2,6 +2,9 @@ import { buildWorldState } from "./worldModel";
 
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 
+const probabilityForTurn = (annualProbability, monthsPerTurn) =>
+  1 - Math.pow(1 - clamp(annualProbability, 0, 0.95), monthsPerTurn / 12);
+
 const riskScore = (turn, pattern, fallback) => {
   const matches = (turn?.riskShifts || [])
     .filter((item) => pattern.test(String(item?.name || "")))
@@ -267,10 +270,14 @@ export function buildRandomEventField(settings, state, turn, month = 0, logs = [
     },
   ];
   return definitions.map((event) => {
-    const probability = clamp(
+    const annualProbability = clamp(
       event.probability,
       0,
-      event.key === "ordinaryTwist" ? 0.22 : 0.07,
+      event.key === "ordinaryTwist" ? 0.35 : 0.14,
+    );
+    const probability = probabilityForTurn(
+      annualProbability,
+      settings.monthsPerTurn || 6,
     );
     const roll = Math.random();
     return {
@@ -288,6 +295,7 @@ export function buildRandomEventField(settings, state, turn, month = 0, logs = [
                   ? "health"
                   : "financial"
         ],
+      annualProbability,
       probability,
       roll,
       triggered: roll < probability,
@@ -295,7 +303,13 @@ export function buildRandomEventField(settings, state, turn, month = 0, logs = [
   });
 }
 
-export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = []) {
+export function calculateOutcomeProbabilities(
+  settings,
+  state,
+  turn,
+  month = 0,
+  logs = [],
+) {
   const model = buildAbilityModel(settings, state);
   const worldState = buildWorldState(settings, month, logs);
   const risks = {
@@ -312,34 +326,55 @@ export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = [
         0,
       ),
   );
-  const debtPressure = Math.min(0.18, Number(state.debt || 0) / resources / 8);
+  const liabilities = Object.values(state.liabilities || {}).reduce(
+    (sum, value) => sum + (Number(value) || 0),
+    0,
+  );
+  const debt = Math.max(liabilities, Number(state.debt || 0));
+  const debtPressure = Math.min(0.12, (debt / resources) * 0.04);
   const lowCondition =
     (state.health < 55 ? (55 - state.health) / 180 : 0) +
     (state.mood < 50 ? (50 - state.mood) / 220 : 0);
   const favorableWeight =
-    0.22 +
-    risks.opportunity / 400 +
+    0.24 +
+    (risks.opportunity / 100) * 0.08 +
     Math.max(0, model.skill.multiplier - 1) * 0.02 +
     Math.max(0, model.intelligence.multiplier - 1) * 0.012 +
     Math.max(0, model.talent.multiplier - 1) * 0.012 +
     Math.max(0, model.financial.multiplier - 1) * 0.008 +
     worldState.modifiers.opportunityWeight;
   const adverseWeight =
-    0.22 +
-    (risks.financial + risks.health + risks.relationship) / 500 +
+    0.2 +
+    ((risks.financial + risks.health + risks.relationship) / 300) * 0.12 +
     debtPressure +
     lowCondition +
     worldState.modifiers.adverseWeight;
   const weights = {
     favorable: favorableWeight,
-    mixed: 0.34,
+    mixed: 0.3,
     adverse: adverseWeight,
-    stagnant: 0.28,
+    stagnant: 0.26,
   };
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
   const probabilities = Object.fromEntries(
     Object.entries(weights).map(([key, value]) => [key, value / total]),
   );
+  return {
+    probabilities,
+    inheritedRisks: risks,
+    factors: { debtPressure, lowCondition },
+  };
+}
+
+export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = []) {
+  const calculated = calculateOutcomeProbabilities(
+    settings,
+    state,
+    turn,
+    month,
+    logs,
+  );
+  const { probabilities, inheritedRisks } = calculated;
   const roll = Math.random();
   let cursor = 0;
   let direction = "stagnant";
@@ -370,13 +405,11 @@ export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = [
     }[direction],
     directive: directives[direction],
     probabilities,
-    inheritedRisks: risks,
+    inheritedRisks,
+    factors: calculated.factors,
     roll,
   };
 }
-
-const probabilityForTurn = (annualProbability, monthsPerTurn) =>
-  1 - Math.pow(1 - clamp(annualProbability, 0, 0.95), monthsPerTurn / 12);
 
 export function buildLifeStageField(
   settings,

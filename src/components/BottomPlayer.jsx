@@ -27,13 +27,14 @@ export default function BottomPlayer({
   importJson,
   soundEnabled,
   onToggleSound,
+  lifeEnded = false,
 }) {
   return (
     <div className="bottom-player">
       <button
         className="player-main"
         onClick={() => setAutoPlay((v) => !v)}
-        disabled={playbackIndex < history.length}
+        disabled={lifeEnded || playbackIndex < history.length}
       >
         {autoPlay ? (
           <Pause size={17} />
@@ -41,19 +42,29 @@ export default function BottomPlayer({
           <Play size={17} fill="currentColor" />
         )}
         <span>
-          {autoPlay ? (simulating ? "人生继续中…" : "阅读中…") : "自动播放"}
+          {lifeEnded
+            ? "人生已结束"
+            : autoPlay
+              ? simulating
+                ? "人生继续中…"
+                : "阅读中…"
+              : "自动播放"}
         </span>
       </button>
       <button
         className="step-btn"
         onClick={simulate}
-        disabled={simulating || autoPlay || playbackIndex < history.length}
+        disabled={
+          lifeEnded || simulating || autoPlay || playbackIndex < history.length
+        }
       >
         {simulating ? <i className="typing" /> : <Zap size={16} />}
         <span>
-          {simulating
-            ? "人生继续中"
-            : `推演${settings.monthsPerTurn >= 12 ? "一年" : settings.monthsPerTurn >= 6 ? "半年" : settings.monthsPerTurn + "个月"}`}
+          {lifeEnded
+            ? "无法继续推演"
+            : simulating
+              ? "人生继续中"
+              : `推演${settings.monthsPerTurn >= 12 ? "一年" : settings.monthsPerTurn >= 6 ? "半年" : settings.monthsPerTurn + "个月"}`}
         </span>
       </button>
       <div className="player-time">

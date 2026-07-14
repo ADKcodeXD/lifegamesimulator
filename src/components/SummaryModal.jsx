@@ -19,6 +19,7 @@ export default function SummaryModal({
   state,
   settings,
   logs,
+  death,
 }) {
   if (!open) return null;
   const netWorth = calculateFinancialSummary(state).netWorth;
@@ -29,7 +30,11 @@ export default function SummaryModal({
           <X size={18} />
         </IconButton>
         <div className="modal-title">
-          <span>人生终章</span>
+          <span>
+            {death?.occurred
+              ? `${death.age || age}岁 · ${death.cause || "生命终结"}`
+              : "人生终章"}
+          </span>
           <b>
             {loading ? "正在回望这一生…" : summary?.title || "等待人生总结"}
           </b>
@@ -88,7 +93,7 @@ export default function SummaryModal({
         {error && <div className="sim-error">{error}</div>}
         <div className="modal-actions">
           <button className="ghost" onClick={onClose}>
-            返回人生
+            {death?.occurred ? "回看人生" : "返回人生"}
           </button>
           <button
             className="primary"

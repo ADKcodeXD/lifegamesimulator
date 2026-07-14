@@ -231,8 +231,8 @@ export default function SetupModal({
               />
             </label>
             <p className="helper">
-              这不是固定世界观。每过 12 个月，故事引擎
-              会根据上一年的经济、政策、科技与社会情绪，自主生成下一年的世界变化。
+              这不是固定世界观。每一轮故事引擎都会继承既有世界记忆，
+              自主判断经济、政策、科技与社会情绪是否出现新的变化。
             </p>
             <div className="generator-note">
               <Sparkles size={18} />
@@ -456,7 +456,9 @@ export default function SetupModal({
                     });
                   }}
                 />
-                <small className="field-helper">输入时不截断，启动模拟时统一校验</small>
+                <small className="field-helper">
+                  输入时不截断，启动模拟时统一校验
+                </small>
               </label>
               <label>
                 初始身材
@@ -747,12 +749,18 @@ export default function SetupModal({
               if (!Number.isFinite(height) || height < 130 || height > 220) {
                 setStartError("成年最终身高请填写 130–220 cm 之间的有效数值。");
                 heightInputRef.current?.focus();
-                heightInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                heightInputRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
                 return;
               }
               const submittedSettings = {
                 ...settings,
-                physicalProfile: { ...settings.physicalProfile, adultHeightCm: height },
+                physicalProfile: {
+                  ...settings.physicalProfile,
+                  adultHeightCm: height,
+                },
               };
               setSettings(submittedSettings);
               setStartError("");

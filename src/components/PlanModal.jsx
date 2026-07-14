@@ -3,77 +3,133 @@ import {
   Brain,
   ChevronRight,
   Dices,
-  Network,
-  TrendingUp,
+  Gamepad2,
+  Globe2,
+  HeartPulse,
+  ScrollText,
+  Skull,
   X,
 } from "lucide-react";
 import { IconButton } from "./Common";
+
+const FLOW = [
+  {
+    icon: Globe2,
+    tone: "purple",
+    title: "世界记忆",
+    text: "世界种子 + 模型生成的新闻历史",
+    detail: "没有代码预设新闻池",
+  },
+  {
+    icon: Dices,
+    tone: "blue",
+    title: "概率结算",
+    text: "年龄、健康、关系、资产与风险",
+    detail: "先掷骰，再决定外部结果",
+  },
+  {
+    icon: Brain,
+    tone: "orange",
+    title: "角色行动",
+    text: "人格 + 记忆 + 玩家方向权重",
+    detail: "角色按自己的人生惯性选择",
+  },
+  {
+    icon: Gamepad2,
+    tone: "green",
+    title: "游戏反馈",
+    text: "成功 / 失败 / 努力 / 婚姻",
+    detail: "素材、数值和里程碑结算",
+  },
+];
 
 export default function PlanModal({ open, onClose }) {
   if (!open) return null;
   return (
     <div className="modal-backdrop">
-      <div className="modal plan-modal">
+      <div className="modal plan-modal architecture-modal">
         <IconButton onClick={onClose}>
           <X size={18} />
         </IconButton>
         <div className="modal-title">
-          <span>人生如何继续</span>
-          <b>这里没有固定剧情，世界和每个人都会发生变化。</b>
+          <span>SIMULATION ARCHITECTURE · v6</span>
+          <b>世界、人物、概率与死亡，共同组成一条可终止的人生状态机。</b>
         </div>
-        <div className="plan-flow">
-          <div className="flow-card purple">
-            <Network />
-            <b>世界状态</b>
+
+        <div className="plan-flow architecture-flow">
+          {FLOW.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <React.Fragment key={item.title}>
+                <div className={`flow-card ${item.tone}`}>
+                  <Icon />
+                  <b>{item.title}</b>
+                  <span>
+                    {item.text}
+                    <br />
+                    <small>{item.detail}</small>
+                  </span>
+                </div>
+                {index < FLOW.length - 1 && (
+                  <ChevronRight className="flow-arrow" />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        <div className="life-state-machine">
+          <div className="state-alive">
+            <HeartPulse size={19} />
             <span>
-              社会背景 + 年度变化
-              <br />
-              经济 / 政策 / 科技 / 舆论
+              <b>存活</b>
+              <small>继续回合 → 写入状态与长期记忆</small>
             </span>
           </div>
           <ChevronRight />
-          <div className="flow-card blue">
-            <Dices />
-            <b>概率场</b>
+          <div className="state-check">
+            <Dices size={19} />
             <span>
-              年龄 + 历史选择
-              <br />
-              动态风险 + 独立结果抽样
+              <b>死亡判定</b>
+              <small>事故 / 疾病 / 长期恶化，必须有完整因果</small>
+            </span>
+          </div>
+          <div className="state-branches">
+            <span>未死亡 → 下一轮</span>
+            <span>死亡 ↓</span>
+          </div>
+          <div className="state-ended">
+            <Skull size={19} />
+            <span>
+              <b>人生终止</b>
+              <small>锁定播放器并停止自动推演</small>
             </span>
           </div>
           <ChevronRight />
-          <div className="flow-card orange">
-            <Brain />
-            <b>人物如何决定</b>
+          <div className="state-summary">
+            <ScrollText size={19} />
             <span>
-              接受人格 → 年龄/记忆校准 → 决定
-              <br />
-              不会突然变成与人设不符的“完美理性人”
-            </span>
-          </div>
-          <ChevronRight />
-          <div className="flow-card green">
-            <TrendingUp />
-            <b>状态回写</b>
-            <span>
-              资产 / 健康 / 人格
-              <br />
-              关系 / 新概率 / 记忆
+              <b>自动总结</b>
+              <small>回顾高光、遗憾、财富、关系与人格</small>
             </span>
           </div>
         </div>
-        <div className="feedback-box">
-          <b>每一轮，都会完整经历一段生活</b>
+
+        <div className="feedback-box architecture-notes">
+          <b>一轮推演的数据闭环</b>
           <div>
-            <span>输入</span>完整状态快照 + 最近记忆 + 世界背景 + 情境提示
+            <span>输入</span>人物快照、世界记忆、方向权重、关系网络、资产账本
+          </div>
+          <div>
+            <span>模型</span>
+            生成世界事件与人物行动；概率工具约束成功、失败、事故和死亡合理性
           </div>
           <div>
             <span>输出</span>
-            事件、思考摘要、决定、现金流、关系变化、人格微调、概率漂移
+            回合事件、世界更新、财务交易、关系变化、死亡状态与游戏式素材反馈
           </div>
           <div>
-            <span>每年</span>
-            额外生成年度社会报告，并成为下一年所有事件的世界前提
+            <span>持久化</span>所有结果写入存档，成为下一轮唯一历史前提
           </div>
         </div>
         <button className="primary full" onClick={onClose}>

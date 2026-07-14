@@ -32,6 +32,7 @@ export default function RightPanel({
   onOpenLedger,
   directionField,
   onSelectDirection,
+  outcomePreview,
 }) {
   const currency = currencyForWorld(world);
   const netWorthChange = Number(turn.netWorthChange ?? turn.cashflow) || 0;
@@ -112,16 +113,26 @@ export default function RightPanel({
           />
 
           <div className="probability-list">
-            <b>下一阶段概率</b>
-            {(turn.riskShifts || []).slice(0, 3).map((risk, index) => (
-              <div key={`${risk.name}-${index}`}>
-                <span>{risk.name}</span>
+            <b>下一轮结果概率</b>
+            {Object.entries(outcomePreview?.probabilities || {}).map(
+              ([key, probability]) => (
+              <div key={key}>
+                <span>
+                  {{
+                    favorable: "有利",
+                    mixed: "得失并存",
+                    adverse: "不利",
+                    stagnant: "平淡",
+                  }[key] || key}
+                </span>
                 <i>
-                  <em style={{ width: `${risk.value}%` }} />
+                  <em style={{ width: `${probability * 100}%` }} />
                 </i>
-                <small>{risk.value}%</small>
+                <small>{Math.round(probability * 100)}%</small>
               </div>
-            ))}
+              ),
+            )}
+            <small className="probability-note">按时间跨度、状态、负债与世界压力计算</small>
           </div>
         </div>
       )}

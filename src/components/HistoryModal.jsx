@@ -133,7 +133,7 @@ export default function HistoryModal({ historyLogs, month, onClose }) {
                           )}
                           {l.worldChange && (
                             <div className="tl-detail-block world">
-                              <b>年度社会变化</b>
+                              <b>世界模型变化</b>
                               <p>{l.worldChange}</p>
                             </div>
                           )}

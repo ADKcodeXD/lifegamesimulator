@@ -94,6 +94,7 @@ export function createProbabilityToolRuntime(payload) {
       evaluatedEvents: visibleEvents.map((event) => ({
         key: event.key,
         label: event.label,
+        annualProbability: event.annualProbability,
         probability: event.probability,
         roll: event.roll,
         triggered: event.triggered,
@@ -106,6 +107,8 @@ export function createProbabilityToolRuntime(payload) {
         direction: resolved.outcome.direction,
         label: resolved.outcome.label,
         directive: resolved.outcome.directive,
+        probabilities: resolved.outcome.probabilities,
+        inheritedRisks: resolved.outcome.inheritedRisks,
       },
       triggeredLifeStageEvents: resolved.lifeStage.events
         .filter((event) => event.triggered)

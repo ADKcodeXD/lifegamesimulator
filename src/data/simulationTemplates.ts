@@ -1,10 +1,10 @@
 export const SIMULATION_CONFIG = {
-  saveVersion: 5,
+  saveVersion: 6,
   defaultNpcEmoji: "🙂",
 };
 
 export const MILESTONE_PATTERN =
-  /买房|结婚|毕业|创业|生育|退休|首付|房贷|升学|入学|出国|升职|辞职|生子|分手|离婚|搬家|出院|康复|初恋|暗恋|表白|落榜|录取|破产|失业|重逢|决裂/;
+  /买房|结婚|毕业|创业|生育|退休|首付|房贷|升学|入学|出国|升职|辞职|生子|分手|离婚|搬家|出院|康复|初恋|暗恋|表白|落榜|录取|破产|失业|重逢|决裂|死亡|去世|离世/;
 
 export const LANDING_FEATURES = [
   { id: "probability", icon: "dice", label: "动态概率场" },

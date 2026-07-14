@@ -1,5 +1,5 @@
 import React from "react";
-import { Check, Compass, Sparkles } from "lucide-react";
+import { Check, Compass } from "lucide-react";
 
 export default function DirectionChoices({ directionField, onSelect, disabled }) {
   if (!directionField?.choices?.length) return null;
@@ -12,9 +12,8 @@ export default function DirectionChoices({ directionField, onSelect, disabled })
         </span>
         <small>{directionField.stage}</small>
       </div>
-      <p>结合当前年龄、性格与家庭生成。选择会提高下一轮倾向，并留下长期惯性。</p>
       <div className="direction-grid">
-        {directionField.choices.map((choice) => {
+        {directionField.choices.slice(0, 4).map((choice) => {
           const selected = directionField.selectedId === choice.id;
           return (
             <button
@@ -27,11 +26,9 @@ export default function DirectionChoices({ directionField, onSelect, disabled })
               <span className="direction-icon">{choice.icon}</span>
               <span className="direction-copy">
                 <b>{choice.label}</b>
-                <small>{choice.description}</small>
-                <i><em style={{ width: `${choice.fit}%` }} /></i>
               </span>
               <span className="direction-fit">
-                {selected ? <Check size={13} /> : choice.learnedWeight > 0 ? <Sparkles size={12} /> : null}
+                {selected ? <Check size={12} /> : null}
                 {choice.fit}%
               </span>
             </button>

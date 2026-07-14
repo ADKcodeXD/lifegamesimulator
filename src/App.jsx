@@ -72,7 +72,10 @@ import {
 } from "./services/llm";
 import { exportLifePoster } from "./utils/poster";
 import { playUiSound } from "./utils/sound";
-import { formatWorldMoney } from "./simulation/probabilityModel";
+import {
+  calculateOutcomeProbabilities,
+  formatWorldMoney,
+} from "./simulation/probabilityModel";
 import { buildWorldState } from "./simulation/worldModel";
 import {
   consumeSelectedDirection,
@@ -125,6 +128,44 @@ const LANDING_ICONS = {
   people: UsersRound,
 };
 
+const classifyBulletin = (result = {}) => {
+  const text = `${result.title || ""} ${result.tag || ""} ${result.event || ""}`;
+  if (result.death?.occurred) return { variant: "death", label: "生命终结" };
+  if (/结婚|婚礼|领证|成婚/.test(text))
+    return { variant: "marriage", label: "缔结婚姻" };
+  const direction = result.outcomeAudit?.direction;
+  if (direction === "favorable")
+    return { variant: "success", label: "有利结算" };
+  if (direction === "adverse") return { variant: "failure", label: "不利结算" };
+  return {
+    variant: "effort",
+    label: direction === "stagnant" ? "努力未兑现" : "继续积累",
+  };
+};
+
+const shouldShowBulletin = (result, majorAssets, lifeDeltas) => {
+  const text = `${result.title || ""} ${result.tag || ""} ${result.event || ""}`;
+  const majorWorldEvent = (result.worldEvents || []).some(
+    (event) => Number(event?.intensity) >= 70,
+  );
+  const majorLifeDelta = lifeDeltas.some(
+    (item) =>
+      (item.label === "健康" && Math.abs(item.value) >= 20) ||
+      (item.label === "事业" && Math.abs(item.value) >= 25),
+  );
+  const majorRelationship = (result.relationshipChanges || []).some(
+    (change) => Math.abs(Number(change?.delta) || 0) >= 35,
+  );
+  return Boolean(
+    result.death?.occurred ||
+      MILESTONE_PATTERN.test(text) ||
+      majorAssets.length ||
+      majorWorldEvent ||
+      majorLifeDelta ||
+      majorRelationship,
+  );
+};
+
 const normalizeResume = (resume, settings) => {
   const fallback = createInitialResume(settings);
   return {
@@ -140,7 +181,11 @@ const createStateForSettings = (settings) => ({
   bodyProfile: createBodyProfile(settings),
 });
 
-const normalizeStateForSettings = (state, settings, age = settings.startAge) => ({
+const normalizeStateForSettings = (
+  state,
+  settings,
+  age = settings.startAge,
+) => ({
   ...normalizeFinancialState(state, settings.initialCash),
   bodyProfile: normalizeBodyProfile(state?.bodyProfile, settings, age),
 });
@@ -216,7 +261,21 @@ export default function App() {
     financialSummary = calculateFinancialSummary(state),
     netWorth = financialSummary.netWorth;
   const worldState = buildWorldState(settings, month, logs);
-  const directionField = getDirectionChoices({ age, settings, state, relations, resume });
+  const outcomePreview = calculateOutcomeProbabilities(
+    settings,
+    state,
+    turn,
+    month,
+    logs,
+  );
+  const directionField = getDirectionChoices({
+    age,
+    settings,
+    state,
+    relations,
+    resume,
+  });
+  const lifeEnded = Boolean(turn.death?.occurred);
   const spouse = relations.find((r) =>
     /配偶|夫妻|妻子|丈夫|爱人|伴侣/.test(r.status),
   );
@@ -284,6 +343,10 @@ export default function App() {
   }, [settings.name, settings.bio, settings.startAge, started]);
 
   const simulate = async () => {
+    if (lifeEnded) {
+      finishLife();
+      return;
+    }
     if (!apiKey) {
       setError("故事引擎尚未连接。请先完成连接设置，再让人生继续。");
       setKeyOpen(true);
@@ -553,6 +616,7 @@ export default function App() {
           worldChange: result.worldChange,
           worldEvents: result.worldEvents || [],
           worldStateUpdate: result.worldStateUpdate || null,
+          death: result.death || { occurred: false },
           skillsGained: skillTurn.gained,
           skillsLost: skillTurn.lost,
           skillsUsed: skillTurn.used,
@@ -585,10 +649,12 @@ export default function App() {
       setLogs(nextLogs);
       setMonth(nextMonth);
       setNpcProfiles(evolvedNetwork.npcProfiles);
-      const majorAssets = financialTurn.entries.filter((entry) =>
-        ["buy_asset", "sell_asset"].includes(entry.kind) ||
-        ["realEstate", "vehicles"].includes(entry.account) ||
-        Math.abs(Number(entry.assetDelta) || 0) >= Math.max(50000, Math.abs(financialSummary.netWorth) * 0.2),
+      const majorAssets = financialTurn.entries.filter(
+        (entry) =>
+          ["buy_asset", "sell_asset"].includes(entry.kind) ||
+          ["realEstate", "vehicles"].includes(entry.account) ||
+          Math.abs(Number(entry.assetDelta) || 0) >=
+            Math.max(50000, Math.abs(financialSummary.netWorth) * 0.2),
       );
       const lifeDeltas = [
         { label: "健康", value: nextState.health - state.health },
@@ -596,26 +662,24 @@ export default function App() {
         { label: "事业", value: nextState.career - state.career },
         { label: "净资产", value: Math.round(financialTurn.netWorthChange) },
       ].filter((item) => item.value !== 0);
-      setTurnBulletin({
-        time: `${nextProtagonistAge}岁 · ${(nextMonth % 12) + 1}月`,
-        life: {
-          title: result.title,
-          summary: result.summary || result.log || result.event,
-          deltas: lifeDeltas.slice(0, 4),
-        },
-        world:
-          result.worldEvents?.[0] ||
-          (result.worldChange
-            ? {
-                title: "世界模型更新",
-                description: result.worldChange,
-                scope: result.worldStateUpdate?.region || worldState.region,
-                phase: "本轮变化",
-                tone: "neutral",
-              }
-            : null),
-        assets: majorAssets,
-      });
+      const bulletinType = classifyBulletin(result);
+      if (shouldShowBulletin(result, majorAssets, lifeDeltas)) {
+        setTurnBulletin({
+          ...bulletinType,
+          resultLabel: bulletinType.label,
+          time: `${nextProtagonistAge}岁 · ${(nextMonth % 12) + 1}月`,
+          life: {
+            title: result.title,
+            summary: result.summary || result.log || result.event,
+            deltas: lifeDeltas.slice(0, 4),
+          },
+          world:
+            result.worldEvents?.find(
+              (event) => Number(event?.intensity) >= 70,
+            ) || null,
+          assets: majorAssets,
+        });
+      }
       const snapshot = {
         month: nextMonth,
         state: nextState,
@@ -642,6 +706,10 @@ export default function App() {
         }),
       );
       setHasSave(true);
+      if (result.death?.occurred) {
+        setAutoPlay(false);
+        void finishLife(snapshot);
+      }
     } catch (e) {
       playUiSound("low", soundEnabled);
       setError(e.message || "推演失败，请检查 API Key 与网络。");
@@ -661,7 +729,10 @@ export default function App() {
     });
     setPendingApproval(null);
   };
-  const finishLife = async () => {
+  const finishLife = async (snapshot = null) => {
+    const source = snapshot?.state
+      ? snapshot
+      : { settings, state, relations, logs, month };
     setSummaryOpen(true);
     setSummaryLoading(true);
     setSummaryError("");
@@ -672,7 +743,13 @@ export default function App() {
           endpoint: localStorage.getItem(LLM_STORAGE_KEYS.endpoint) || endpoint,
           model: localStorage.getItem(LLM_STORAGE_KEYS.model) || model,
         },
-        { settings, state, relations, logs, month },
+        {
+          settings: source.settings,
+          state: source.state,
+          relations: source.relations,
+          logs: source.logs,
+          month: source.month,
+        },
       );
       setSummary(result);
     } catch (e) {
@@ -964,7 +1041,8 @@ export default function App() {
     );
   };
   useEffect(() => {
-    if (!autoPlay || !started || simulating || turnBulletin) return;
+    if (!autoPlay || !started || simulating || turnBulletin || lifeEnded)
+      return;
     if (age >= settings.endAge) {
       setAutoPlay(false);
       finishLife();
@@ -986,6 +1064,7 @@ export default function App() {
     playbackIndex,
     history.length,
     turnBulletin,
+    lifeEnded,
   ]);
   const reset = () => {
     setStarted(false);
@@ -1044,7 +1123,7 @@ export default function App() {
               <em>预设选项</em>
             </h1>
             <p>
-              世界每年重写，事件每月生成。
+              世界每轮演化，事件现场生成。
               <br />
               你只施加引导，角色自己下注，概率记住一切。
             </p>
@@ -1109,7 +1188,8 @@ export default function App() {
           onStart={(submittedSettings = settings) => {
             const startingSettings = {
               ...submittedSettings,
-              personalityProfile: createInitialPersonalityProfile(submittedSettings),
+              personalityProfile:
+                createInitialPersonalityProfile(submittedSettings),
             };
             setSettings(startingSettings);
             setResume(createInitialResume(startingSettings));
@@ -1169,10 +1249,10 @@ export default function App() {
         <div className="top-actions">
           <button
             className="nav-link finish-link"
-            onClick={finishLife}
-            disabled={simulating || month === 0}
+            onClick={() => finishLife()}
+            disabled={simulating || month === 0 || lifeEnded}
           >
-            <Flag size={16} /> 结束并总结
+            <Flag size={16} /> {lifeEnded ? "人生已结束" : "结束并总结"}
           </button>
           <button className="nav-link" onClick={() => setPlanOpen(true)}>
             <Network size={16} /> 模拟架构
@@ -1310,8 +1390,11 @@ export default function App() {
           world={settings.world}
           onOpenLedger={() => setAssetLedgerOpen(true)}
           directionField={directionField}
+          outcomePreview={outcomePreview}
           onSelectDirection={(directionId) => {
-            setSettings((current) => selectDirection(current, directionId, month));
+            setSettings((current) =>
+              selectDirection(current, directionId, month),
+            );
             playUiSound("toggle", soundEnabled);
           }}
         />
@@ -1356,6 +1439,7 @@ export default function App() {
             return next;
           });
         }}
+        lifeEnded={lifeEnded}
       />
       {historyOpen && (
         <HistoryModal
@@ -1482,6 +1566,7 @@ export default function App() {
         state={state}
         settings={settings}
         logs={logs}
+        death={turn.death}
       />
       <ApprovalRequest request={pendingApproval} onResolve={resolveApproval} />
       <ProfileDetailModal
