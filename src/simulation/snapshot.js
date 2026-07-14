@@ -13,6 +13,7 @@ export function createGameSnapshot(parts) {
     socialEdges: parts.socialEdges,
     historicalContacts: parts.historicalContacts,
     resume: parts.resume,
+    simulation: parts.simulation,
     lifecycle: parts.turn?.death?.occurred ? "dead" : "alive",
   };
 }

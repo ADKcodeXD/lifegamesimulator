@@ -80,8 +80,8 @@ function SimulationProgress({ settings, trace, phase }) {
         <div className="life-unfolding-wait">
           <i />
           <p>
-            <b>正在一次性推演本轮人生</b>
-            <span>速度优先：单次请求完成事件生成与统一结算。</span>
+            <b>正在筛选本轮可能发生的事情</b>
+            <span>先规划多个候选，再由代码决定人物选择与事件结果。</span>
           </p>
         </div>
       ) : (

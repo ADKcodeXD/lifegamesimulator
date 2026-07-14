@@ -58,9 +58,7 @@ import {
 } from "./simulation/financeModel";
 import { normalizeSkills } from "./simulation/skillModel";
 import { removeLegacyFixedContact } from "./simulation/npcLifecycle";
-import {
-  normalizeNpcInteractionHistories,
-} from "./simulation/relationshipHistory";
+import { normalizeNpcInteractionHistories } from "./simulation/relationshipHistory";
 import { createInitialPersonalityProfile } from "./simulation/personalityModel";
 import {
   callLifeSummary,
@@ -71,10 +69,7 @@ import {
 } from "./services/llm";
 import { exportLifePoster } from "./utils/poster";
 import { playUiSound } from "./utils/sound";
-import {
-  calculateOutcomeProbabilities,
-  formatWorldMoney,
-} from "./simulation/probabilityModel";
+import { formatWorldMoney } from "./simulation/probabilityModel";
 import { buildWorldState } from "./simulation/worldModel";
 import {
   getDirectionChoices,
@@ -85,6 +80,11 @@ import {
   normalizeBodyProfile,
 } from "./simulation/bodyModel";
 import { reconcileEducationTimeline } from "./simulation/educationTimeline";
+import {
+  createInitialSimulationState,
+  migrateGameSave,
+  normalizeSimulationState,
+} from "./simulation/simulationState";
 import {
   Activity,
   ArrowRight,
@@ -231,6 +231,14 @@ export default function App() {
     [turn, setTurn] = useState(blankTurn),
     [error, setError] = useState("");
   const [logs, setLogs] = useState(() => [createPrologueLog(settings)]);
+  const [simulation, setSimulation] = useState(() =>
+    createInitialSimulationState({
+      settings,
+      relations: INITIAL_RELATIONS,
+      resume: createInitialResume(settings),
+      month: 0,
+    }),
+  );
   const [summary, setSummary] = useState(null),
     [summaryError, setSummaryError] = useState("");
   const [history, setHistory] = useState([]),
@@ -242,13 +250,7 @@ export default function App() {
     financialSummary = calculateFinancialSummary(state),
     netWorth = financialSummary.netWorth;
   const worldState = buildWorldState(settings, month, logs);
-  const outcomePreview = calculateOutcomeProbabilities(
-    settings,
-    state,
-    turn,
-    month,
-    logs,
-  );
+  const outcomePreview = turn.outcomeAudit || { probabilities: {} };
   const directionField = getDirectionChoices({
     age,
     settings,
@@ -367,6 +369,10 @@ export default function App() {
           turn,
           resume,
           socialEdges,
+          npcProfiles,
+          historicalContacts,
+          simulation,
+          randomSeed,
         });
         approvalDecision = await new Promise((resolve) => {
           approvalResolverRef.current = resolve;
@@ -386,9 +392,11 @@ export default function App() {
         socialEdges,
         npcProfiles,
         historicalContacts,
+        simulation,
         publicTrace: null,
         randomSeed,
       });
+      setSimulationTrace(result.simulationTrace || null);
       dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.VALIDATING });
       playUiSound(
         result.outcomeAudit?.direction === "adverse"
@@ -411,6 +419,7 @@ export default function App() {
           socialEdges,
           npcProfiles,
           historicalContacts,
+          simulation,
         },
         result,
         approvalDecision,
@@ -426,6 +435,7 @@ export default function App() {
       setLogs(snapshot.logs);
       setMonth(snapshot.month);
       setNpcProfiles(snapshot.npcProfiles);
+      setSimulation(snapshot.simulation);
       if (resolved.notification) {
         dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.MAJOR_EVENT });
         setTurnBulletin(resolved.notification);
@@ -462,6 +472,7 @@ export default function App() {
     resolve({
       requestTitle: pendingApproval?.title || "临时人生分岔",
       option,
+      approvedEvent: pendingApproval?.eventCandidate || null,
       autoSelected,
     });
     setPendingApproval(null);
@@ -585,7 +596,9 @@ export default function App() {
   const loadSavedGame = () => {
     try {
       dispatchGame({ type: "RESET" });
-      const save = JSON.parse(localStorage.getItem("life_saved_game"));
+      const save = migrateGameSave(
+        JSON.parse(localStorage.getItem("life_saved_game")),
+      );
       const npcData = removeLegacyFixedContact({
         relations: save.relations || INITIAL_RELATIONS,
         npcProfiles: {
@@ -629,6 +642,7 @@ export default function App() {
       setSocialEdges(npcData.socialEdges);
       setHistoricalContacts(npcData.historicalContacts);
       setResume(savedResume);
+      setSimulation(save.simulation);
       setHistory(save.history || []);
       setPlaybackIndex((save.history || []).length);
       setStarted(true);
@@ -641,7 +655,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target.result);
+        const data = migrateGameSave(JSON.parse(e.target.result));
         if (!data.settings || !data.state) throw new Error("格式不正确");
         const npcData = removeLegacyFixedContact({
           relations: data.relations || INITIAL_RELATIONS,
@@ -676,6 +690,7 @@ export default function App() {
         setSocialEdges(npcData.socialEdges);
         setHistoricalContacts(npcData.historicalContacts);
         setResume(importedResume);
+        setSimulation(data.simulation);
         setTurn(
           normalizeTurnTimeline(
             data.turn,
@@ -698,6 +713,7 @@ export default function App() {
             version: SIMULATION_CONFIG.saveVersion,
             settings: importedSettings,
             state: importedState,
+            simulation: data.simulation,
           }),
         );
         setHasSave(true);
@@ -725,6 +741,7 @@ export default function App() {
             logs,
             history,
             month,
+            simulation,
           },
           null,
           2,
@@ -750,6 +767,14 @@ export default function App() {
       setSocialEdges(INITIAL_SOCIAL_EDGES);
       setHistoricalContacts([]);
       setResume(createInitialResume(settings));
+      setSimulation(
+        createInitialSimulationState({
+          settings,
+          relations: INITIAL_RELATIONS,
+          resume: createInitialResume(settings),
+          month: 0,
+        }),
+      );
       setNpcProfiles(
         normalizeNpcInteractionHistories(
           createInitialNpcProfiles(settings),
@@ -798,6 +823,15 @@ export default function App() {
       );
       setSettings(snapshotSettings);
       setLogs(s.logs);
+      setSimulation(
+        normalizeSimulationState(s.simulation, {
+          settings: snapshotSettings,
+          relations: s.relations,
+          resume: snapshotResume,
+          logs: s.logs,
+          month: s.month,
+        }),
+      );
     }
   };
   const restartFromPlayback = () => {
@@ -819,6 +853,7 @@ export default function App() {
         turn,
         settings,
         logs,
+        simulation,
         history: kept,
       }),
     );
@@ -865,6 +900,14 @@ export default function App() {
       ),
     );
     setResume(createInitialResume(settings));
+    setSimulation(
+      createInitialSimulationState({
+        settings,
+        relations: INITIAL_RELATIONS,
+        resume: createInitialResume(settings),
+        month: 0,
+      }),
+    );
     setTurn(blankTurn);
     setLogs([createPrologueLog(settings)]);
     setSummary(null);
@@ -978,6 +1021,14 @@ export default function App() {
             };
             setSettings(startingSettings);
             setResume(createInitialResume(startingSettings));
+            setSimulation(
+              createInitialSimulationState({
+                settings: startingSettings,
+                relations,
+                resume: createInitialResume(startingSettings),
+                month: 0,
+              }),
+            );
             setSocialEdges(INITIAL_SOCIAL_EDGES);
             setNpcProfiles(
               normalizeNpcInteractionHistories(

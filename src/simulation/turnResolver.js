@@ -23,6 +23,7 @@ import {
   normalizeEmotion,
   reconcileEmotionRiskShifts,
 } from "./emotionModel";
+import { advanceSimulationState } from "./simulationState";
 
 export function resolveTurn(current, result, approvalDecision = null) {
   const {
@@ -36,6 +37,7 @@ export function resolveTurn(current, result, approvalDecision = null) {
     socialEdges,
     npcProfiles,
     historicalContacts,
+    simulation,
   } = current;
   const age = (settings.startAge ?? 18) + Math.floor(month / 12);
   const monthOfYear = (month % 12) + 1;
@@ -82,7 +84,12 @@ export function resolveTurn(current, result, approvalDecision = null) {
     health: clamp(state.health + (delta.health || 0) + stateDrift.health),
     emotion: clamp(normalizeEmotion(state) + emotionDeltaFromResult(result)),
     career: clamp(state.career + (delta.career || 0) + stateDrift.career),
-    bodyProfile: evolveBodyProfile(state.bodyProfile, settings, result, nextAge),
+    bodyProfile: evolveBodyProfile(
+      state.bodyProfile,
+      settings,
+      result,
+      nextAge,
+    ),
   };
   const nextRiskShifts = reconcileEmotionRiskShifts(
     result.riskShifts,
@@ -100,7 +107,9 @@ export function resolveTurn(current, result, approvalDecision = null) {
 
   const nextRelations = [...relations];
   for (const change of result.relationshipChanges || []) {
-    const index = nextRelations.findIndex((relation) => relation.name === change.name);
+    const index = nextRelations.findIndex(
+      (relation) => relation.name === change.name,
+    );
     if (index >= 0) {
       nextRelations[index] = {
         ...nextRelations[index],
@@ -121,7 +130,8 @@ export function resolveTurn(current, result, approvalDecision = null) {
 
   const nextSocialEdges = [...socialEdges];
   for (const change of result.npcRelationshipChanges || []) {
-    if (!change.source || !change.target || change.source === change.target) continue;
+    if (!change.source || !change.target || change.source === change.target)
+      continue;
     const index = nextSocialEdges.findIndex(
       (edge) =>
         (edge.source === change.source && edge.target === change.target) ||
@@ -134,7 +144,10 @@ export function resolveTurn(current, result, approvalDecision = null) {
         value: clamp(nextSocialEdges[index].value + (change.delta || 0)),
       };
     } else {
-      nextSocialEdges.push({ ...change, value: clamp(50 + (change.delta || 0)) });
+      nextSocialEdges.push({
+        ...change,
+        value: clamp(50 + (change.delta || 0)),
+      });
     }
   }
 
@@ -145,10 +158,18 @@ export function resolveTurn(current, result, approvalDecision = null) {
   nextSettings.personalityProfile = applyPersonalityTurn(
     settings.personalityProfile,
     result,
-    { age: nextAge, settings: nextSettings, relationshipChanges: result.relationshipChanges || [] },
+    {
+      age: nextAge,
+      settings: nextSettings,
+      relationshipChanges: result.relationshipChanges || [],
+    },
   );
 
-  let newProfiles = normalizeNpcInteractionHistories(npcProfiles, relations, settings);
+  let newProfiles = normalizeNpcInteractionHistories(
+    npcProfiles,
+    relations,
+    settings,
+  );
   for (const profile of result.npcProfiles || []) {
     if (!profile.name) continue;
     const isNew = !newProfiles[profile.name];
@@ -169,7 +190,12 @@ export function resolveTurn(current, result, approvalDecision = null) {
     nextRelations,
     historicalContacts,
     changes: result.relationshipChanges || [],
-    context: { age: nextAge, title: result.title, event: result.event, summary: result.summary },
+    context: {
+      age: nextAge,
+      title: result.title,
+      event: result.event,
+      summary: result.summary,
+    },
   });
 
   const resumeUpdate = result.resumeUpdate || {};
@@ -189,7 +215,10 @@ export function resolveTurn(current, result, approvalDecision = null) {
   };
   const interactionNames = [
     ...(result.relationshipChanges || []).map((item) => item.name),
-    ...(result.npcRelationshipChanges || []).flatMap((item) => [item.source, item.target]),
+    ...(result.npcRelationshipChanges || []).flatMap((item) => [
+      item.source,
+      item.target,
+    ]),
   ].filter(Boolean);
   const evolvedNetwork = evolveNpcNetwork({
     relations: nextRelations,
@@ -266,6 +295,8 @@ export function resolveTurn(current, result, approvalDecision = null) {
     decisionBasis: result.decisionBasis || null,
     approval: approvalDecision,
     domainEvents: [],
+    emergentEvent: result.emergentEvent || null,
+    simulationTrace: result.simulationTrace || null,
   };
   const nextLogs = [...logs, nextLog];
   const domain = deriveDomainEvents({
@@ -279,6 +310,14 @@ export function resolveTurn(current, result, approvalDecision = null) {
   });
   nextLog.domainEvents = domain.events;
   nextTurn.domainEvents = domain.events;
+  const nextSimulation = advanceSimulationState(simulation, result, {
+    settings: nextSettings,
+    relations: evolvedNetwork.relations,
+    resume: nextResume,
+    logs: nextLogs,
+    month: nextMonth,
+    turnNumber: nextLogs.length - 1,
+  });
   const snapshot = createGameSnapshot({
     month: nextMonth,
     state: nextState,
@@ -290,6 +329,7 @@ export function resolveTurn(current, result, approvalDecision = null) {
     socialEdges: evolvedNetwork.socialEdges,
     historicalContacts: evolvedNetwork.historicalContacts,
     resume: nextResume,
+    simulation: nextSimulation,
   });
   return {
     snapshot,

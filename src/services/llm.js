@@ -13,6 +13,18 @@ import { createSeededRandom } from "../utils/prng";
 import { buildScoreContext } from "../simulation/scoreCalibration";
 import { deriveTalentPathways } from "../simulation/talentPathways";
 import { describeEmotion, normalizeEmotion } from "../simulation/emotionModel";
+import { normalizeSimulationState } from "../simulation/simulationState";
+import { buildActiveContext } from "../simulation/contextActivator";
+import {
+  normalizeCandidate,
+  selectCandidate,
+} from "../simulation/eventCandidateModel";
+import {
+  resolveCharacterDecision,
+  resolveEventOutcome,
+} from "../simulation/eventResolutionModel";
+import { generateEventCandidates } from "./eventPlanner";
+import { buildExternalDisturbanceField } from "../simulation/externalDisturbanceModel";
 
 function deepSeekThinkingOverride(endpoint, model) {
   const endpointText = String(endpoint || "").toLowerCase();
@@ -408,121 +420,150 @@ relationshipChanges每项还必须包含"eventType"、"memory"和"personalityIns
 只输出一个JSON对象，不要markdown：{"title":"用一句话概括这${mpt}个月主角做了什么（如：入职互联网公司、高考失利复读、相亲遇到心动对象、被诈骗损失两万），简洁易懂","summary":"80到120字的阶段简介，概括做了什么、为什么这样决定、得到和失去什么以及当前处境；不要重复标题","tag":"事件类型（如求学/在校/读书/社交/恋爱/家庭/创业/在职/Gap/抑郁/生病/旅行/搬家/意外等）","event":"具体发生了什么（含NPC互动细节）","thought":"主角内心想法和动机","decision":"角色最终决定","reason":"决策的核心理由","relationshipSummary":"本轮关键人际变化","intimacySummary":"本轮情感、恋爱或成年亲密状态","gains":["本轮收获，不要把技能重复写在这里，没有则空数组"],"losses":["本轮明确失去的金钱、机会、关系、健康或时间，没有则空数组"],"toolsUsed":["实际调用的工具"],"skillsGained":["本轮新增的固定技能名，最多1项"],"skillsUsed":["本轮实际使用的固定技能名"],"skillsAvailable":["精简后的累计固定技能名"],"physicalStatus":{"label":"如健康/疲劳/轻伤/患病/恢复中","detail":"30字以内身体状况、症状和行动限制"},"learningStatus":{"stage":"当前教育或学习阶段","label":"如进步/稳定/退步/停学/未在学习","detail":"40字以内成绩、课程、训练或学习进度"},"cashflow":整数（必须等于financialTransactions的cashDelta之和，无变化为0）,"financialTransactions":[{"kind":"income/expense/buy_asset/sell_asset/asset_revaluation/borrow/repay/receivable_created/receivable_collected","account":"cash/stocks/realEstate/vehicles/receivables/other/mortgage/loans/credit","amount":正整数,"cashDelta":整数,"assetDelta":整数,"liabilityDelta":整数,"label":"账目名称","note":"账目原因"}],"roi":"预期ROI或非财务回报（如成长、经验、人脉）","stateDelta":{"cash":0,"debt":0,"health":整数,"mood":整数,"career":整数},"traitDelta":{"理性":整数,"冒险":整数,"家庭":整数,"好奇":整数},"relationshipChanges":[{"name":"姓名","emoji":"一个emoji","delta":整数,"status":"关系状态","personality":"此人性格（新NPC必填，已有NPC可省略）","action":"此NPC本轮对主角做了什么","eventType":"相识/升温/靠近/冲突/恶化/决裂/背叛/修复/重逢/日常","memory":"可长期保存的具体互动","personalityInsight":"本轮对其性格的新认识，无则空字符串"}],"npcRelationshipChanges":[{"source":"NPC姓名","target":"另一个NPC姓名","delta":整数,"status":"两人关系","action":"两人本轮发生了什么"}],"npcProfiles":[{"name":"仅新NPC姓名","age":年龄,"role":"职业或身份","personality":"3-5个性格关键词+描述","background":"简短背景故事","motivation":"核心动机/目标","relationToProtagonist":"与主角的关系定位","potentialConflict":"潜在冲突点"}],"npcLifecycleUpdates":[{"name":"已有NPC姓名","role":"更新后的职业或身份","lifeStatus":"当前生活状态短标签","summary":"40字以内独立生活变化"}],"resumeUpdate":{"currentRole":"当前职业或身份","organization":"学校/公司/组织，没有则空字符串","employmentStatus":"在校/在职/自由职业/创业/待业/退休等","education":"当前教育","skills":["精简后的累计固定技能名"],"entry":{"time":"本轮年龄","title":"履历标题","description":"50字以内可验证经历","type":"教育/工作/项目/奖项/生活"}},"randomEventAudit":{"triggered":布尔值,"category":"命中类别或无","probability":0到1},"riskShifts":[{"name":"未来事件类别","value":0到100整数,"trend":"上升/下降/持平"}],"worldEvents":[{"id":"稳定英文id","title":"新闻标题","scope":"影响范围","phase":"发展阶段","status":"emerging/ongoing/resolved","tone":"danger/warning/opportunity/neutral","intensity":0到100整数,"description":"具体发生了什么及社会传导","effects":{"financialRisk":0到100,"energyPrice":0到100,"housingPressure":0到100,"employmentPressure":0到100,"healthPressure":0到100,"careerOpportunity":0到100}}],"worldStateUpdate":{"region":"当前地区","climate":"世界阶段短标题","summary":"继承历史后的当前世界概况","indicators":[{"key":"简短英文键","label":"由本轮世界决定的指标名","value":0到100整数}]},"worldChange":"本轮世界变化摘要；没有实质变化则为null","log":"一句客观人生记录"}`;
 }
 
+function buildEmergentTurnPrompt({
+  payload,
+  activeContext,
+  selectedEvent,
+  decision,
+  outcome,
+  randomEvents,
+  worldState,
+}) {
+  const months = payload.settings.monthsPerTurn || 6;
+  const endMonth = payload.month + months;
+  const endAge = (payload.settings.startAge ?? 18) + Math.floor(endMonth / 12);
+  const relevantRandomEvents = randomEvents
+    .filter((item) => item.triggered)
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
+      valence: item.valence,
+    }));
+  const currentFinancial = {
+    cash: payload.state.cash,
+    assets: payload.state.assets,
+    liabilities: payload.state.liabilities,
+    monthlyIncome: payload.state.income,
+  };
+  return `你是人生模拟器的叙事结算器。事件候选、人物选择和结果方向已经由代码确定；你只能把它们具体化，不能另选主线、职业、技能或矛盾。
+
+本轮活跃上下文：${JSON.stringify(activeContext)}
+选中事件：${JSON.stringify(selectedEvent)}
+人物已作出的选择：${JSON.stringify(decision.selected)}
+代码锁定的结果：${JSON.stringify(outcome)}
+代码命中的额外随机扰动：${JSON.stringify(relevantRandomEvents)}
+当前财务：${JSON.stringify(currentFinancial)}
+当前履历：${JSON.stringify(payload.resume || {})}
+当前世界快照：${JSON.stringify({ date: worldState.date, region: worldState.region, events: worldState.events })}
+用户明确审批：${JSON.stringify(payload.approvalDecision || null)}
+
+结算纪律：
+1. 主事件必须是选中事件，decision必须忠实表达代码选定的action；不得把能力高改写成突然转行或突然获得技能。
+2. outcome.direction不可反转。adverse必须有可结算损失；mixed必须同时有真实收益和代价；stagnant不能新增技能或事业突破。
+3. 只使用activeContext中的NPC。新人物必须已有newActorJustification，并同时写入relationshipChanges和npcProfiles。
+4. 潜在冲突不是已发生冲突。没有具体导火索时不得安排争吵；turnsSinceConflict较小时避免重复同一矛盾。
+5. skillsGained最多1项，只有本轮确实形成可复用能力时才填写自由文本；程序会在结算后归一化。普通尝试不得自动变成技能。
+6. financialTransactions是唯一财务明细；cashflow等于cashDelta之和。stateDelta.cash和debt固定为0。无财务变化返回空数组。
+7. worldEvents只有选中事件或已存在世界进程确实推动世界变化时才填写，否则为空。不得根据被省略的原始世界种子自行制造热点。
+8. 所有状态描述以本轮结束时${endAge}岁为准。本轮跨度${months}个月。
+9. 不增加选中事件之外的第二条主线，不把损失包装成成长，不写空泛总结。
+
+只输出一个JSON对象，必须包含以下字段：
+{"title":"","summary":"80到120字","tag":"","event":"具体过程","thought":"","decision":"","reason":"","relationshipSummary":"","intimacySummary":"","gains":[],"losses":[],"skillsGained":[],"skillsUsed":[],"skillsAvailable":[],"skillsLost":[],"physicalStatus":{"label":"健康","detail":""},"learningStatus":{"stage":"","label":"","detail":""},"cashflow":0,"financialTransactions":[],"roi":"无","stateDelta":{"cash":0,"debt":0,"health":0,"emotion":0,"career":0},"traitDelta":{"决策风格":0,"家庭":0,"好奇":0},"relationshipChanges":[],"npcRelationshipChanges":[],"npcProfiles":[],"npcLifecycleUpdates":[],"resumeUpdate":{"currentRole":"","organization":"","employmentStatus":"","education":"","skills":[],"entry":null},"riskShifts":[{"name":"职业跃迁","value":0,"trend":"持平"},{"name":"财务危机","value":0,"trend":"持平"},{"name":"健康事件","value":0,"trend":"持平"},{"name":"关系冲击","value":0,"trend":"持平"}],"worldEvents":[],"worldStateUpdate":null,"worldChange":null,"log":"","statusLabel":"","monthlyIncome":0,"personalityUpdate":{"changed":false},"bodyUpdate":{"bodyType":"${payload.state.bodyProfile?.bodyType || "匀称"}","reason":"维持"},"death":{"occurred":false,"cause":"","age":null,"summary":""}}`;
+}
+
 export async function callSimulator({ apiKey, endpoint, model }, payload) {
   const url = endpoint.replace(/\/$/, "") + "/chat/completions";
-  const probabilityRuntime = createProbabilityToolRuntime(payload);
-  const probabilityAudit = probabilityRuntime.getAudit();
-  const sampledRandomEventField = probabilityAudit.randomEvents;
-  const sampledOutcomeField = probabilityAudit.outcome;
+  const simulation = normalizeSimulationState(payload.simulation, payload);
+  const activeContext = buildActiveContext(
+    payload,
+    simulation,
+    createSeededRandom(`${payload.randomSeed || "legacy"}:context`),
+  );
+  const turnNumber = payload.logs?.length || Math.floor(payload.month / 6);
+  let candidateSelection;
+  if (payload.approvalDecision?.approvedEvent) {
+    const approved = normalizeCandidate(payload.approvalDecision.approvedEvent);
+    candidateSelection = {
+      selected: approved,
+      selectedScore: null,
+      scored: [{ id: approved.id, score: null, repetition: 0, valid: true }],
+      rejected: [],
+    };
+  } else {
+    const rawCandidates = await generateEventCandidates(
+      { apiKey, endpoint, model },
+      activeContext,
+    );
+    candidateSelection = selectCandidate(
+      rawCandidates,
+      activeContext,
+      simulation,
+      turnNumber,
+      createSeededRandom(`${payload.randomSeed || "legacy"}:candidate`),
+    );
+  }
+  if (!candidateSelection.selected) throw new Error("没有可结算的事件候选");
+  const selectedEvent = candidateSelection.selected;
+  const approvedChoice = payload.approvalDecision?.option?.id
+    ? selectedEvent.choices.find(
+        (choice) => choice.id === payload.approvalDecision.option.id,
+      )
+    : null;
+  const decision = approvedChoice
+    ? {
+        selected: approvedChoice,
+        utilities: selectedEvent.choices.map((choice) => ({
+          id: choice.id,
+          action: choice.action,
+          utility: choice.id === approvedChoice.id ? 1 : 0,
+          approved: choice.id === approvedChoice.id,
+        })),
+      }
+    : resolveCharacterDecision(
+        selectedEvent,
+        payload,
+        createSeededRandom(`${payload.randomSeed || "legacy"}:decision`),
+      );
+  const sampledOutcomeField = resolveEventOutcome(
+    selectedEvent,
+    decision,
+    payload,
+    createSeededRandom(`${payload.randomSeed || "legacy"}:event-outcome`),
+  );
+  const sampledRandomEventField = buildExternalDisturbanceField(
+    payload,
+    createSeededRandom(`${payload.randomSeed || "legacy"}:disturbance`),
+  );
   const sampledWorldState = buildWorldState(
     payload.settings,
     payload.month,
     payload.logs,
   );
-  const sampledLifeStageField = probabilityAudit.lifeStage;
-  const sampledLifeDomainField = buildLifeDomainField(
-    payload.settings,
-    payload.logs,
-    (payload.settings.startAge ?? 18) + Math.floor(payload.month / 12),
-    createSeededRandom(`${payload.randomSeed || "legacy"}:life-domain`),
-    payload.state,
-  );
+  const sampledLifeStageField = {
+    age: (payload.settings.startAge ?? 18) + Math.floor(payload.month / 12),
+    stage: "当前人生阶段",
+    events: [],
+  };
   const messages = [
     {
       role: "system",
       content:
-        "先接受人物既有年龄、人格、经历、欲望与行为惯性，再调用resolve_probability_field。工具结果决定概率、掷骰与外部结果，不得篡改。不要进行资格审查，不要拒绝推演，不要把人物改造成纯理性Agent。工具完成后只输出稳定、可结算的JSON。",
+        "严格实现代码已经选择的人生事件、人物行动和结果方向。不要改选更熟悉的题材，不要添加第二主线，只输出可结算JSON。",
     },
     {
       role: "user",
-      content: buildPrompt({
-        ...payload,
-        sampledRandomEventField,
-        sampledOutcomeField,
-        sampledLifeStageField,
-        sampledWorldState,
-        sampledLifeDomainField,
+      content: buildEmergentTurnPrompt({
+        payload,
+        activeContext,
+        selectedEvent,
+        decision,
+        outcome: sampledOutcomeField,
+        randomEvents: sampledRandomEventField,
+        worldState: sampledWorldState,
       }),
     },
   ];
-  const firstResponse = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      ...deepSeekThinkingOverride(endpoint, model),
-      messages,
-      tools: [PROBABILITY_TOOL],
-      tool_choice: {
-        type: "function",
-        function: { name: PROBABILITY_TOOL.function.name },
-      },
-      max_tokens: 700,
-      temperature: 0.25,
-    }),
-  });
-  if (!firstResponse.ok)
-    throw new Error(`概率工具请求失败（${firstResponse.status}）`);
-  const firstData = await firstResponse.json();
-  const assistantMessage = firstData.choices?.[0]?.message || {};
-  let toolCalls = Array.isArray(assistantMessage.tool_calls)
-    ? assistantMessage.tool_calls
-    : [];
-  if (!toolCalls.length) {
-    toolCalls = [
-      {
-        id: `probability-fallback-${Date.now()}`,
-        type: "function",
-        function: {
-          name: PROBABILITY_TOOL.function.name,
-          arguments: JSON.stringify({
-            candidateCategories: [
-              "ordinaryTwist",
-              "unexpectedOpportunity",
-              "relationshipShock",
-              "financialShock",
-              "healthIncident",
-            ],
-            plannedAction: "兼容接口未返回工具调用，由代码执行完整概率检查",
-          }),
-        },
-      },
-    ];
-  }
-  messages.push({
-    role: "assistant",
-    content: assistantMessage.content || null,
-    tool_calls: toolCalls,
-  });
-  for (const toolCall of toolCalls) {
-    let args = {};
-    try {
-      args =
-        typeof toolCall.function?.arguments === "string"
-          ? JSON.parse(toolCall.function.arguments || "{}")
-          : toolCall.function?.arguments || {};
-    } catch {
-      args = {};
-    }
-    const toolResult = probabilityRuntime.execute(
-      toolCall.function?.name,
-      args,
-    );
-    messages.push({
-      role: "tool",
-      tool_call_id: toolCall.id,
-      name: toolCall.function?.name,
-      content: JSON.stringify(toolResult),
-    });
-  }
-  messages.push({
-    role: "user",
-    content:
-      "严格服从上面的工具结果完成本轮结算。triggered=false不得写成发生，结果方向不得反转。现在只输出最终JSON对象。",
-  });
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -533,13 +574,11 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
       model,
       ...deepSeekThinkingOverride(endpoint, model),
       messages,
-      tools: [PROBABILITY_TOOL],
-      tool_choice: "none",
       ...(url.includes("api.deepseek.com")
         ? { response_format: { type: "json_object" } }
         : {}),
       max_tokens: 5000,
-      temperature: 0.68,
+      temperature: 0.62,
     }),
   });
   if (!response.ok) throw new Error(`API 结算请求失败（${response.status}）`);
@@ -562,15 +601,17 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
         (Number(item.liabilityDelta) || 0) <
       0,
   );
-  const hasSettledDownside =
+  let hasSettledDownside =
     Object.values(stateDelta).some((value) => Number(value) < 0) ||
     transactionDownside ||
     (parsed.relationshipChanges || []).some((item) => Number(item.delta) < 0) ||
     (parsed.skillsLost || []).length > 0;
-  const hasMaterialDownside =
+  let hasMaterialDownside =
     (parsed.losses || []).length > 0 || hasSettledDownside;
   const result = {
     ...parsed,
+    decision: decision.selected.action,
+    event: parsed.event || selectedEvent.premise,
     stateDelta,
     losses: [...(parsed.losses || [])],
     worldEvents: Array.isArray(parsed.worldEvents)
@@ -596,10 +637,31 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
     toolsUsed: [
       ...new Set([
         ...(Array.isArray(parsed.toolsUsed) ? parsed.toolsUsed : []),
-        PROBABILITY_TOOL.function.name,
+        "event_candidate_scoring",
+        "event_resolution",
       ]),
     ],
   };
+  const allowedNpcNames = new Set([
+    ...activeContext.relevantNpcs.map((npc) => npc.name),
+    ...selectedEvent.actors.filter((name) => name !== "主角"),
+  ]);
+  result.relationshipChanges = (result.relationshipChanges || []).filter(
+    (change) => allowedNpcNames.has(change.name),
+  );
+  result.npcProfiles = (result.npcProfiles || []).filter((profile) =>
+    allowedNpcNames.has(profile.name),
+  );
+  result.npcRelationshipChanges = (result.npcRelationshipChanges || []).filter(
+    (change) =>
+      allowedNpcNames.has(change.source) && allowedNpcNames.has(change.target),
+  );
+  hasSettledDownside =
+    Object.values(result.stateDelta).some((value) => Number(value) < 0) ||
+    transactionDownside ||
+    result.relationshipChanges.some((item) => Number(item.delta) < 0) ||
+    (result.skillsLost || []).length > 0;
+  hasMaterialDownside = result.losses.length > 0 || hasSettledDownside;
   if (
     (sampledOutcomeField.direction === "adverse" && !hasSettledDownside) ||
     (sampledOutcomeField.direction === "mixed" && !hasMaterialDownside)
@@ -625,6 +687,16 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
   );
   return {
     ...result,
+    emergentEvent: selectedEvent,
+    simulationTrace: {
+      activeContext,
+      candidates: candidateSelection.scored,
+      rejectedCandidates: candidateSelection.rejected,
+      selectedCandidate: selectedEvent.id,
+      selectedCandidateScore: candidateSelection.selectedScore,
+      decisionUtilities: decision.utilities,
+      outcomeFactors: sampledOutcomeField.factors,
+    },
     randomEventAudit: {
       triggered: triggered.length > 0,
       category: triggered.map((item) => item.label).join("、") || "无",
@@ -647,11 +719,20 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
         probability: item.probability,
       })),
     },
-    lifeFocusAudit: sampledLifeDomainField,
+    lifeFocusAudit: {
+      selected: {
+        key: "emergent",
+        label: selectedEvent.premise,
+        guidance: selectedEvent.dramaticQuestion,
+      },
+      recentFocusPenalty: candidateSelection.scored
+        .filter((item) => item.repetition >= 0.5)
+        .map((item) => item.id),
+    },
   };
 }
 
-export async function generateApprovalRequest(
+async function generateLegacyApprovalRequest(
   { apiKey, endpoint, model },
   { settings, state, relations, logs, month, turn },
 ) {
@@ -758,6 +839,44 @@ export async function generateApprovalRequest(
     : request.options[0]?.id;
   request.freedomLevel = settings.freedomLevel || "high";
   return request;
+}
+
+export async function generateApprovalRequest(config, payload) {
+  const simulation = normalizeSimulationState(payload.simulation, payload);
+  const activeContext = buildActiveContext(
+    payload,
+    simulation,
+    createSeededRandom(`${payload.randomSeed || "legacy"}:approval-context`),
+  );
+  const candidates = await generateEventCandidates(config, activeContext);
+  const selection = selectCandidate(
+    candidates,
+    activeContext,
+    simulation,
+    payload.logs?.length || Math.floor(payload.month / 6),
+    createSeededRandom(`${payload.randomSeed || "legacy"}:approval-candidate`),
+  );
+  if (!selection.selected) throw new Error("没有适合请求批准的现实分岔");
+  const event = selection.selected;
+  const optionCount = (
+    FREEDOM_LEVELS[payload.settings.freedomLevel] || FREEDOM_LEVELS.high
+  ).optionCount;
+  const options = event.choices.slice(0, optionCount).map((choice, index) => ({
+    id: choice.id,
+    label: choice.action.slice(0, 12),
+    description: choice.action.slice(0, 30),
+    impact: [...choice.motivations, ...choice.barriers].join("；").slice(0, 24),
+    recommended: index === 0,
+  }));
+  return {
+    title: event.dramaticQuestion.slice(0, 24),
+    context: event.premise.slice(0, 100),
+    agentThought: "这个选择会影响既有生活进程，但结果仍由现实条件决定。",
+    defaultOptionId: options[0]?.id,
+    options,
+    freedomLevel: payload.settings.freedomLevel || "high",
+    eventCandidate: event,
+  };
 }
 
 export async function generateCharacterProfile(

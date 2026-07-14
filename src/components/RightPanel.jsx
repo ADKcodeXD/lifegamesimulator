@@ -155,27 +155,27 @@ export default function RightPanel({
           />
 
           <div className="probability-list">
-            <b>下一轮结果概率</b>
+            <b>本轮事件结算分布</b>
             {Object.entries(outcomePreview?.probabilities || {}).map(
               ([key, probability]) => (
-              <div key={key}>
-                <span>
-                  {{
-                    favorable: "有利",
-                    mixed: "得失并存",
-                    adverse: "不利",
-                    stagnant: "平淡",
-                  }[key] || key}
-                </span>
-                <i>
-                  <em style={{ width: `${probability * 100}%` }} />
-                </i>
-                <small>{Math.round(probability * 100)}%</small>
-              </div>
+                <div key={key}>
+                  <span>
+                    {{
+                      favorable: "有利",
+                      mixed: "得失并存",
+                      adverse: "不利",
+                      stagnant: "平淡",
+                    }[key] || key}
+                  </span>
+                  <i>
+                    <em style={{ width: `${probability * 100}%` }} />
+                  </i>
+                  <small>{Math.round(probability * 100)}%</small>
+                </div>
               ),
             )}
             <small className="probability-note">
-              按正态能力标尺、时间跨度、状态、负债与世界压力计算
+              只使用选中事件真正相关的能力、行动投入、难度与状态计算
             </small>
           </div>
         </div>
