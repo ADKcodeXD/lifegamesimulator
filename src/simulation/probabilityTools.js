@@ -12,6 +12,7 @@ const EVENT_KEYS = [
   "financialShock",
   "fraudOrTrap",
   "healthIncident",
+  "emotionalCrisis",
   "viralExposure",
   "jackpot",
   "seriousAccident",
@@ -114,6 +115,7 @@ export function createProbabilityToolRuntime(payload) {
         directive: resolved.outcome.directive,
         probabilities: resolved.outcome.probabilities,
         inheritedRisks: resolved.outcome.inheritedRisks,
+        abilityEffect: resolved.outcome.factors?.abilityOpportunity || 0,
       },
       randomSeed: resolved.randomSeed,
       triggeredLifeStageEvents: resolved.lifeStage.events

@@ -286,7 +286,9 @@ export default function SetupModal({
               <div className="attribute-panel-head">
                 <span>
                   <b id="attribute-title">数值设定</b>
-                  <small>随机人设会依据这些数值生成，不会修改它们</small>
+                  <small>
+                    50 = 普通人平均，每 15 分约为一个标准差；90+ 为奇才级
+                  </small>
                 </span>
                 <em>0 — 100</em>
               </div>

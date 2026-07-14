@@ -1,3 +1,6 @@
+import { deriveTalentPathways } from "./talentPathways.js";
+import { describeEmotion, normalizeEmotion } from "./emotionModel.js";
+
 const FAMILY_SCORE = {
   destitute: 0,
   poor: 1,
@@ -23,6 +26,7 @@ const OPTIONS_BY_STAGE = [
     options: [
       option("play", "尽情玩耍", "🪁", "把时间留给游戏、伙伴与好奇心", 68, "amber"),
       option("interest", "培养兴趣", "🎨", "尝试运动、音乐、阅读或动手创造", 64, "violet"),
+      option("talent_track", "追随突出天赋", "🌟", "让真实天赋进入专项训练、作品或选拔赛道", 50, "green"),
       option("study", "专注学习", "📚", "建立学习习惯并争取更好的教育机会", 56, "blue"),
       option("family", "亲近家人", "🏠", "从家庭陪伴中获得安全感与支持", 62, "green"),
     ],
@@ -35,6 +39,7 @@ const OPTIONS_BY_STAGE = [
       option("romance", "靠近喜欢的人", "💗", "允许暗恋、表达与亲密关系发生", 48, "rose"),
       option("gaming", "游戏与同伴", "🎮", "在同伴文化和娱乐中寻找归属", 55, "violet"),
       option("creator", "开始做自媒体", "📹", "公开表达、创作内容并积累受众", 38, "amber"),
+      option("talent_track", "投入天赋赛道", "🌟", "在升学之外尝试竞技、表演、创作、技术或专项选拔", 42, "green"),
       option("rebellion", "叛逆试探", "🌙", "挑战边界，也可能接触烟酒与损友", 26, "slate"),
     ],
   },
@@ -44,7 +49,7 @@ const OPTIONS_BY_STAGE = [
     options: [
       option("overseas", "出国留学", "✈️", "用家庭资源或奖学金换取国际教育", 34, "blue"),
       option("career", "进入职场", "💼", "积累职业资本、收入与独立生活能力", 70, "green"),
-      option("startup", "尝试创业", "🚀", "把技能、创意和资源押向一项事业", 38, "amber"),
+      option("startup", "尝试创业", "🚀", "把天赋、创意和资源押向一项事业", 38, "amber"),
       option("romance", "经营爱情", "💗", "主动靠近关系并学习承诺与边界", 52, "rose"),
       option("creator", "经营自媒体", "📹", "持续创作，把表达变成影响力或副业", 45, "violet"),
       option("gaming", "沉浸游戏社交", "🎮", "把更多时间留给游戏、朋友和线上娱乐", 34, "slate"),
@@ -102,29 +107,64 @@ export function getDirectionChoices({ age, settings = {}, state = {}, relations 
   const stage = OPTIONS_BY_STAGE.find((item) => age < item.maxAge) || OPTIONS_BY_STAGE.at(-1);
   const familyScore = FAMILY_SCORE[settings.family] ?? 2;
   const traits = settings.traits || {};
+  const decisionStyle = Number(traits.决策风格 ?? 50);
+  const social = Number(settings.talents?.社交 ?? 50);
+  const emotion = describeEmotion(normalizeEmotion(state));
   const weights = settings.directionPreferences?.weights || {};
   const hasPartner = relations.some((relation) => /伴侣|夫妻|妻子|丈夫|恋人|配偶/.test(`${relation.status || ""}${relation.relationToProtagonist || ""}`));
   const hasChild = relations.some((relation) => /儿子|女儿|孩子|子女/.test(`${relation.status || ""}${relation.relationToProtagonist || ""}${relation.name || ""}`));
   const ownsHome = Number(state.assets?.realEstate) > 0;
   const employed = /在职|自由职业|创业/.test(resume.employmentStatus || "");
+  const talentPathways = deriveTalentPathways(settings, age);
+  const leadPathway = talentPathways[0];
 
   const choices = stage.options.map((item) => {
     let fit = item.baseWeight + Number(weights[item.id] || 0);
     if (item.id === "overseas") fit += familyScore * 8 - 12;
-    if (["startup", "travel", "freedom"].includes(item.id)) fit += (Number(traits.冒险) - 50) * 0.25;
+    if (["startup", "travel", "freedom", "rebellion"].includes(item.id)) fit += (50 - decisionStyle) * 0.25;
     if (["study", "creator", "second_career"].includes(item.id)) fit += (Number(traits.好奇) - 50) * 0.2;
+    if (["romance", "creator", "gaming", "relationship_reset"].includes(item.id)) fit += (social - 50) * 0.2;
+    if (item.id === "talent_track") fit += Math.max(-20, (Number(leadPathway?.score || 50) - 50) * 0.65);
     if (["family", "marriage", "second_child"].includes(item.id)) fit += (Number(traits.家庭) - 50) * 0.25;
     if (item.id === "marriage" && hasPartner) fit += 18;
     if (item.id === "second_child") fit += hasPartner && hasChild ? 18 : hasPartner ? 4 : -28;
     if (item.id === "home") fit += ownsHome ? -25 : familyScore * 4;
     if (item.id === "career" && employed) fit += 8;
-    return { ...item, fit: Math.max(5, Math.min(99, Math.round(fit))), learnedWeight: Number(weights[item.id] || 0) };
+    if (!["health", "family"].includes(item.id)) {
+      fit *= 0.55 + emotion.actionMultiplier * 0.45;
+    }
+    return {
+      ...item,
+      label: item.id === "talent_track" && leadPathway ? `探索${leadPathway.label}` : item.label,
+      description: item.id === "talent_track" && leadPathway ? leadPathway.guidance : item.description,
+      fit: Math.max(5, Math.min(99, Math.round(fit))),
+      learnedWeight: Number(weights[item.id] || 0),
+    };
   });
+
+  if (emotion.value < 45) {
+    choices.push({
+      ...option(
+        "emotional_recovery",
+        "优先恢复情绪",
+        "🌧️",
+        emotion.crisisLevel === "critical"
+          ? "暂停高负荷行动，优先确保安全并寻求可信任者或专业支持"
+          : "降低负荷，通过休息、陪伴、求助或专业支持恢复行动力",
+        0,
+        "violet",
+      ),
+      fit: Math.min(99, Math.round(104 - emotion.value)),
+      learnedWeight: Number(weights.emotional_recovery || 0),
+    });
+  }
 
   return {
     stage: stage.label,
     selectedId: settings.directionPreferences?.selectedId || null,
     choices: choices.sort((a, b) => b.fit - a.fit).slice(0, 6),
+    talentPathways,
+    emotion,
   };
 }
 

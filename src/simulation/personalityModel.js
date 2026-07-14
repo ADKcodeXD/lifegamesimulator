@@ -13,9 +13,10 @@ function deriveMbti(settings = {}) {
   const feeling = /细腻|共情|温柔|感性|重感情|体贴/.test(text);
   const traits = settings.traits || {};
   const ei = introverted && !extroverted ? "I" : "E";
-  const sn = Number(traits.好奇 || 50) >= 58 ? "N" : "S";
-  const tf = feeling ? "F" : Number(traits.理性 || 50) >= 58 ? "T" : "F";
-  const jp = Number(traits.冒险 || 50) >= 55 ? "P" : "J";
+  const sn = Number(traits.好奇 ?? 50) >= 58 ? "N" : "S";
+  const decisionStyle = Number(traits.决策风格 ?? 50);
+  const tf = feeling ? "F" : decisionStyle >= 58 ? "T" : "F";
+  const jp = decisionStyle <= 45 ? "P" : "J";
   return `${ei}${sn}${tf}${jp}`;
 }
 
@@ -28,7 +29,7 @@ export function createInitialPersonalityProfile(settings = {}) {
     mbti,
     mbtiLabel: MBTI_LABELS[mbti] || "持续成长",
     mbtiBasis:
-      "根据初始性格描述与理性、冒险、好奇等倾向生成，仅作为起点而非定论。",
+      "根据初始性格描述与决策风格、好奇等倾向生成，仅作为起点而非定论。",
     coreSummary,
     currentSummary: coreSummary,
     adaptations: [],

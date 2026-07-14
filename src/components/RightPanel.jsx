@@ -1,11 +1,15 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
+  Archive,
   Brain,
   ChevronRight,
+  List,
   Network,
   ReceiptText,
+  Search,
   TrendingDown,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { getCurrentActivity } from "../data/gameState";
 import {
@@ -13,6 +17,19 @@ import {
   formatWorldMoney,
 } from "../simulation/probabilityModel";
 import DirectionChoices from "./DirectionChoices";
+
+const relationSearchText = (relation) =>
+  [
+    relation.name,
+    relation.status,
+    relation.action,
+    relation.personality,
+    relation.familiarity,
+    relation.archivedReason,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
 
 export default function RightPanel({
   turn,
@@ -37,6 +54,31 @@ export default function RightPanel({
   const currency = currencyForWorld(world);
   const netWorthChange = Number(turn.netWorthChange ?? turn.cashflow) || 0;
   const ChangeIcon = netWorthChange >= 0 ? TrendingUp : TrendingDown;
+  const [contactView, setContactView] = useState("active");
+  const [relationQuery, setRelationQuery] = useState("");
+  const [compactRelations, setCompactRelations] = useState(true);
+  const normalizedRelationQuery = relationQuery.trim().toLocaleLowerCase();
+  const visibleRelations = useMemo(
+    () =>
+      normalizedRelationQuery
+        ? relations.filter((relation) =>
+            relationSearchText(relation).includes(normalizedRelationQuery),
+          )
+        : relations,
+    [relations, normalizedRelationQuery],
+  );
+  const visibleHistoricalContacts = useMemo(() => {
+    const contacts = historicalContacts.slice().reverse();
+    return normalizedRelationQuery
+      ? contacts.filter((contact) =>
+          relationSearchText(contact).includes(normalizedRelationQuery),
+        )
+      : contacts;
+  }, [historicalContacts, normalizedRelationQuery]);
+  const visibleContactCount =
+    contactView === "active"
+      ? visibleRelations.length
+      : visibleHistoricalContacts.length;
 
   return (
     <aside className="right-panel compact-right">
@@ -132,20 +174,68 @@ export default function RightPanel({
               </div>
               ),
             )}
-            <small className="probability-note">按时间跨度、状态、负债与世界压力计算</small>
+            <small className="probability-note">
+              按正态能力标尺、时间跨度、状态、负债与世界压力计算
+            </small>
           </div>
         </div>
       )}
 
       {rightTab === "relations" && (
-        <div className="right-tab-content">
-          <div className="relation-lifecycle-summary">
-            <span>
-              <b>{relations.length}</b> 活跃关系
-            </span>
-            <span>
-              <b>{historicalContacts.length}</b> 历史联系人
-            </span>
+        <div className="right-tab-content relations-tab-content">
+          <div className="relation-browser-head">
+            <div
+              className="relation-view-switch"
+              role="tablist"
+              aria-label="联系人范围"
+            >
+              <button
+                type="button"
+                className={contactView === "active" ? "active" : ""}
+                role="tab"
+                aria-selected={contactView === "active"}
+                onClick={() => setContactView("active")}
+              >
+                <Users size={14} />
+                活跃
+                <b>{relations.length}</b>
+              </button>
+              <button
+                type="button"
+                className={contactView === "history" ? "active" : ""}
+                role="tab"
+                aria-selected={contactView === "history"}
+                onClick={() => setContactView("history")}
+              >
+                <Archive size={14} />
+                历史
+                <b>{historicalContacts.length}</b>
+              </button>
+            </div>
+            <div className="relation-search-row">
+              <label className="relation-search">
+                <Search size={14} />
+                <input
+                  type="search"
+                  value={relationQuery}
+                  onChange={(event) => setRelationQuery(event.target.value)}
+                  placeholder="搜索姓名、关系或状态"
+                  aria-label="搜索联系人"
+                />
+              </label>
+              <button
+                type="button"
+                className={`relation-density-toggle ${
+                  compactRelations ? "active" : ""
+                }`}
+                onClick={() => setCompactRelations((current) => !current)}
+                aria-pressed={compactRelations}
+                title={compactRelations ? "切换到详情模式" : "切换到紧凑模式"}
+              >
+                <List size={15} />
+                <span>{compactRelations ? "紧凑" : "详情"}</span>
+              </button>
+            </div>
           </div>
           <button
             className="graph-open-btn"
@@ -157,48 +247,62 @@ export default function RightPanel({
             <Network size={14} />
             查看关系连线图
           </button>
-          <div className="relations">
-            {relations.map((relation, index) => (
-              <div
-                key={`${relation.name}-${index}`}
-                className="rel-row"
-                title={relation.personality}
-                onClick={() => {
-                  setSelectedNpcName(relation.name);
-                  setRelGraphOpen(true);
-                }}
-              >
-                <span className="face">{relation.emoji}</span>
-                <span>
-                  <b>{relation.name}</b>
-                  <small>
-                    {relation.status} · {relation.action || "暂无本轮互动"}
-                  </small>
-                  <small className="rel-lifecycle-meta">
-                    {relation.age ? `${relation.age}岁 · ` : ""}
-                    {relation.familiarity || "关系稳定"}
-                    {relation.inactiveYears > 0
-                      ? ` · ${relation.inactiveYears}年未互动`
-                      : ""}
-                  </small>
-                </span>
-                <b className="rel-value">{relation.value}</b>
-                <ChevronRight size={13} />
-              </div>
-            ))}
-          </div>
-          {historicalContacts.length > 0 && (
-            <section className="historical-relations">
-              <div className="historical-relations-title">
-                <span>自然淡出</span>
-                <small>仍保留人物生平与重逢可能</small>
-              </div>
-              {historicalContacts
-                .slice()
-                .reverse()
-                .map((contact) => (
+          <div
+            className={`relation-list-shell ${
+              compactRelations ? "is-compact" : "is-detailed"
+            }`}
+          >
+            <div className="relation-list-meta">
+              <span>
+                {contactView === "active" ? "当前联系人" : "已淡出联系人"}
+              </span>
+              <small>
+                {normalizedRelationQuery
+                  ? `找到 ${visibleContactCount} 人`
+                  : `${visibleContactCount} 人`}
+              </small>
+            </div>
+            {contactView === "active" ? (
+              <div className="relations">
+                {visibleRelations.map((relation, index) => (
                   <button
+                    type="button"
+                    key={`${relation.name}-${index}`}
+                    className="rel-row"
+                    aria-label={`查看${relation.name}的关系详情`}
+                    title={relation.personality}
+                    onClick={() => {
+                      setSelectedNpcName(relation.name);
+                      setRelGraphOpen(true);
+                    }}
+                  >
+                    <span className="face">{relation.emoji}</span>
+                    <span>
+                      <b>{relation.name}</b>
+                      <small>
+                        {relation.status} · {relation.action || "暂无本轮互动"}
+                      </small>
+                      <small className="rel-lifecycle-meta">
+                        {relation.age ? `${relation.age}岁 · ` : ""}
+                        {relation.familiarity || "关系稳定"}
+                        {relation.inactiveYears > 0
+                          ? ` · ${relation.inactiveYears}年未互动`
+                          : ""}
+                      </small>
+                    </span>
+                    <b className="rel-value">{relation.value}</b>
+                    <ChevronRight size={13} />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="relations historical-relations">
+                {visibleHistoricalContacts.map((contact) => (
+                  <button
+                    type="button"
                     key={contact.name}
+                    className="rel-row historical-rel-row"
+                    aria-label={`查看${contact.name}的历史关系详情`}
                     onClick={() => {
                       setSelectedNpcName(contact.name);
                       setRelGraphOpen(true);
@@ -209,18 +313,36 @@ export default function RightPanel({
                     </span>
                     <span>
                       <b>{contact.name}</b>
-                      <small>
+                      <small>{contact.archivedReason || "长期没有互动"}</small>
+                      <small className="rel-lifecycle-meta">
                         {contact.archivedAtAge
-                          ? `${contact.archivedAtAge}岁淡出 · `
-                          : ""}
-                        {contact.archivedReason || "长期没有互动"}
+                          ? `${contact.archivedAtAge}岁淡出`
+                          : "仍保留人物生平与重逢可能"}
                       </small>
                     </span>
                     <ChevronRight size={13} />
                   </button>
                 ))}
-            </section>
-          )}
+              </div>
+            )}
+            {visibleContactCount === 0 && (
+              <div className="relation-list-empty">
+                <Search size={18} />
+                <span>
+                  {normalizedRelationQuery
+                    ? "没有匹配的联系人"
+                    : contactView === "active"
+                      ? "暂无活跃联系人"
+                      : "暂无历史联系人"}
+                </span>
+                {normalizedRelationQuery && (
+                  <button type="button" onClick={() => setRelationQuery("")}>
+                    清除搜索
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

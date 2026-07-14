@@ -1,4 +1,5 @@
 import { MILESTONE_PATTERN } from "../data/simulationTemplates";
+import { normalizeEmotion } from "./emotionModel";
 
 export function deriveDomainEvents({
   result,
@@ -13,7 +14,11 @@ export function deriveDomainEvents({
   const text = `${result.title || ""} ${result.tag || ""} ${result.event || ""}`;
   const deltas = [
     { key: "health", label: "健康", value: nextState.health - previousState.health },
-    { key: "mood", label: "心情", value: nextState.mood - previousState.mood },
+    {
+      key: "emotion",
+      label: "情绪",
+      value: normalizeEmotion(nextState) - normalizeEmotion(previousState),
+    },
     { key: "career", label: "事业", value: nextState.career - previousState.career },
     { key: "netWorth", label: "净资产", value: Math.round(financialTurn.netWorthChange) },
   ].filter((item) => item.value !== 0);

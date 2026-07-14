@@ -2,6 +2,7 @@ import React from "react";
 import { Activity, Heart, Settings2, Target } from "lucide-react";
 import { FAMILY_LEVELS } from "../data/family";
 import { avatarFor } from "../data/gameState";
+import { describeEmotion, normalizeEmotion } from "../simulation/emotionModel";
 
 export default function LeftPanel({
   age,
@@ -12,6 +13,7 @@ export default function LeftPanel({
   onEdit,
   onOpenProfile,
 }) {
+  const emotion = describeEmotion(normalizeEmotion(state));
   return (
     <aside className="left-panel">
       <div className="profile-card">
@@ -45,12 +47,17 @@ export default function LeftPanel({
         </div>
         <div>
           <label>
-            <Activity size={15} /> 心情
+            <Activity size={15} /> 情绪 · {emotion.label}
           </label>
-          <b>{state.mood}</b>
+          <b>{emotion.value}</b>
           <i>
-            <em className="pink" style={{ width: state.mood + "%" }} />
+            <em className="pink" style={{ width: emotion.value + "%" }} />
           </i>
+          {emotion.crisisLevel !== "none" && (
+            <small className={`emotion-risk-note ${emotion.crisisLevel}`}>
+              心理安全：{emotion.selfHarmRisk}
+            </small>
+          )}
         </div>
         <div>
           <label>

@@ -16,6 +16,13 @@ import { consumeSelectedDirection } from "./directionModel";
 import { evolveBodyProfile } from "./bodyModel";
 import { buildMajorNotification, deriveDomainEvents } from "./domainEvents";
 import { createGameSnapshot } from "./snapshot";
+import { reconcileEducationTimeline } from "./educationTimeline";
+import {
+  describeEmotion,
+  emotionDeltaFromResult,
+  normalizeEmotion,
+  reconcileEmotionRiskShifts,
+} from "./emotionModel";
 
 export function resolveTurn(current, result, approvalDecision = null) {
   const {
@@ -38,6 +45,14 @@ export function resolveTurn(current, result, approvalDecision = null) {
   const nextMonth = month + turnMonths;
   const yearsPassed = Math.floor(nextMonth / 12) - Math.floor(month / 12);
   const nextAge = (settings.startAge ?? 18) + Math.floor(nextMonth / 12);
+  const nextMonthOfYear = (nextMonth % 12) + 1;
+  const turnTime = `${age}岁 · ${monthOfYear}月 → ${nextAge}岁 · ${nextMonthOfYear}月`;
+  result = reconcileEducationTimeline({
+    result,
+    resume,
+    endAge: nextAge,
+    endMonth: nextMonth,
+  });
   const inactiveCareer = /失业|待业|空窗|Gap|停工|退休|休学/.test(
     `${result.statusLabel || ""} ${result.tag || ""} ${result.resumeUpdate?.employmentStatus || ""}`,
   );
@@ -58,17 +73,21 @@ export function resolveTurn(current, result, approvalDecision = null) {
     settings,
     resume,
     monthlyIncome: result.monthlyIncome ?? state.income ?? 0,
-    time: `${age}岁 · ${monthOfYear}月`,
+    time: turnTime,
     title: result.title,
   });
   const nextState = {
     ...financialTurn.state,
     income: Math.max(0, result.monthlyIncome ?? state.income ?? 0),
     health: clamp(state.health + (delta.health || 0) + stateDrift.health),
-    mood: clamp(state.mood + (delta.mood || 0)),
+    emotion: clamp(normalizeEmotion(state) + emotionDeltaFromResult(result)),
     career: clamp(state.career + (delta.career || 0) + stateDrift.career),
     bodyProfile: evolveBodyProfile(state.bodyProfile, settings, result, nextAge),
   };
+  const nextRiskShifts = reconcileEmotionRiskShifts(
+    result.riskShifts,
+    nextState.emotion,
+  );
   const nextSettings = {
     ...consumeSelectedDirection(settings),
     traits: Object.fromEntries(
@@ -161,6 +180,8 @@ export function resolveTurn(current, result, approvalDecision = null) {
     organization: resumeUpdate.organization ?? resume.organization,
     employmentStatus: resumeUpdate.employmentStatus || resume.employmentStatus,
     education: resumeUpdate.education || resume.education,
+    educationTimeline:
+      resumeUpdate.educationTimeline || resume.educationTimeline || null,
     skills: skillTurn.available,
     experiences: resumeEntry
       ? [...(resume.experiences || []), resumeEntry].slice(-80)
@@ -197,10 +218,12 @@ export function resolveTurn(current, result, approvalDecision = null) {
     cashflow: financialTurn.cashflow,
     netWorthChange: financialTurn.netWorthChange,
     financialEntries: financialTurn.entries,
+    emotionState: describeEmotion(nextState.emotion),
+    riskShifts: nextRiskShifts,
     approval: approvalDecision,
   };
   const nextLog = {
-    time: `${age}岁 · ${monthOfYear}月`,
+    time: turnTime,
     month,
     title: result.title,
     text: result.log || result.decision,
@@ -227,6 +250,7 @@ export function resolveTurn(current, result, approvalDecision = null) {
     physicalStatus: result.physicalStatus || null,
     learningStatus: result.learningStatus || null,
     stateDelta: result.stateDelta || {},
+    emotionState: describeEmotion(nextState.emotion),
     relationshipChanges: result.relationshipChanges || [],
     relationshipSummary: result.relationshipSummary || "",
     intimacySummary: result.intimacySummary || "",
@@ -236,6 +260,7 @@ export function resolveTurn(current, result, approvalDecision = null) {
     archivedContacts: evolvedNetwork.archivedNow.map((item) => item.name),
     resumeEntry: resumeEntry || null,
     randomEventAudit: result.randomEventAudit || null,
+    riskShifts: nextRiskShifts,
     outcomeAudit: result.outcomeAudit || null,
     lifeStageAudit: result.lifeStageAudit || null,
     decisionBasis: result.decisionBasis || null,

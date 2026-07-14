@@ -1,8 +1,8 @@
-import { parentsForFamily } from "./family";
+import { parentsForFamily } from "./family.js";
 import {
   createInitialPersonalityProfile,
   normalizePersonalityProfile,
-} from "../simulation/personalityModel";
+} from "../simulation/personalityModel.js";
 
 export const DEFAULT_CONSTRAINTS = [
   { age: 24, title: "可能面临首次购房与房贷选择", tone: "orange" },
@@ -11,14 +11,13 @@ export const DEFAULT_CONSTRAINTS = [
 export const TALENT_TIPS = {
   颜值: "影响社交第一印象、恋爱概率和人脉拓展",
   运动: "影响健康恢复速度、体育相关机会和抗压能力",
-  技能: "影响学习效率、职业晋升速度和副业收入",
   智力: "影响理解速度、复杂问题处理和高认知职业机会",
-  天赋: "影响长期成长上限、突破速度和跨领域潜力",
+  天赋: "合并先天潜能与技能成长，影响学习、实践、职业表现和成长上限",
   财商: "影响消费判断、投资风险、债务管理和资产积累",
+  社交: "综合情商、共情与社交能力，影响关系建立、沟通协作和冲突处理",
 };
 export const TRAIT_TIPS = {
-  理性: "影响决策质量、风险评估和投资判断力",
-  冒险: "影响高风险高回报行为的概率，如创业、炒股",
+  决策风格: "低分更冒险冲动，高分更理性审慎，50表示两者平衡",
   家庭: "影响家庭关系维护、婚恋决策和亲情投入",
   好奇: "影响探索新机会的动力、学习意愿和转行勇气",
 };
@@ -51,13 +50,40 @@ export const FREEDOM_LEVELS = {
 export const normalizeSettings = (s = {}) => {
   const family = s.family || "modest";
   const freedomLevel = "high";
+  const legacyTalents = s.talents || {};
+  const legacyTraits = s.traits || {};
+  const mergedTalent =
+    legacyTalents.天赋 != null && legacyTalents.技能 != null
+      ? Math.round((Number(legacyTalents.天赋) + Number(legacyTalents.技能)) / 2)
+      : Number(legacyTalents.天赋 ?? legacyTalents.技能 ?? 65);
+  const mergedDecisionStyle =
+    legacyTraits.决策风格 != null
+      ? Number(legacyTraits.决策风格)
+      : Math.round(
+          (Number(legacyTraits.理性 ?? 72) +
+            (100 - Number(legacyTraits.冒险 ?? 38))) /
+            2,
+        );
   const defaultTalents = {
     颜值: 55,
     运动: 48,
-    技能: 72,
     智力: 62,
-    天赋: 58,
+    天赋: 65,
     财商: 50,
+    社交: 50,
+  };
+  const normalizedTalents = {
+    颜值: Number(legacyTalents.颜值 ?? defaultTalents.颜值),
+    运动: Number(legacyTalents.运动 ?? defaultTalents.运动),
+    智力: Number(legacyTalents.智力 ?? defaultTalents.智力),
+    天赋: mergedTalent,
+    财商: Number(legacyTalents.财商 ?? defaultTalents.财商),
+    社交: Number(legacyTalents.社交 ?? defaultTalents.社交),
+  };
+  const normalizedTraits = {
+    决策风格: mergedDecisionStyle,
+    家庭: Number(legacyTraits.家庭 ?? 64),
+    好奇: Number(legacyTraits.好奇 ?? 81),
   };
   const defaultHeight = s.gender === "女" ? 163 : 175;
   const settings = {
@@ -77,12 +103,13 @@ export const normalizeSettings = (s = {}) => {
     endAge: 80,
     monthsPerTurn: 6,
     freedomLevel,
-    traits: { 理性: 72, 冒险: 38, 家庭: 64, 好奇: 81 },
+    traits: normalizedTraits,
     constraints: DEFAULT_CONSTRAINTS,
     ...s,
     family,
     freedomLevel,
-    talents: { ...defaultTalents, ...(s.talents || {}) },
+    talents: normalizedTalents,
+    traits: normalizedTraits,
     physicalProfile: {
       adultHeightCm:
         Number(s.physicalProfile?.adultHeightCm) || defaultHeight,

@@ -17,6 +17,7 @@ import {
 } from "../simulation/probabilityModel";
 import { calculateFinancialSummary } from "../simulation/financeModel";
 import { groupSkillsByTier } from "../simulation/skillModel";
+import { describeEmotion, normalizeEmotion } from "../simulation/emotionModel";
 
 export default function ProfileDetailModal({
   open,
@@ -29,6 +30,7 @@ export default function ProfileDetailModal({
 }) {
   if (!open) return null;
   const model = buildAbilityModel(settings, state);
+  const emotion = describeEmotion(normalizeEmotion(state));
   const financialSummary = calculateFinancialSummary(state);
   const personality = settings.personalityProfile || {};
   const experiences = resume.experiences?.length
@@ -98,9 +100,9 @@ export default function ProfileDetailModal({
             <article>
               <Heart size={19} />
               <span>
-                <small>身体与心情</small>
+                <small>健康 / 情绪 / 行动力</small>
                 <b>
-                  {state.health} / {state.mood}
+                  {state.health} / {emotion.value} / {emotion.actionDrive}
                 </b>
               </span>
             </article>
@@ -212,16 +214,16 @@ export default function ProfileDetailModal({
               <span>
                 <Activity size={16} /> 非线性能力影响
               </span>
-              <small>跨过阈值后才显著改变事件概率</small>
+              <small>50为人群平均，每15分约为一个标准差</small>
             </div>
             <div className="ability-model-grid">
               {[
                 ["颜值", model.appearance],
                 ["运动", model.athletic],
-                ["技能", model.skill],
                 ["智力", model.intelligence],
                 ["天赋", model.talent],
                 ["财商", model.financial],
+                ["社交", model.social],
               ].map(([name, value]) => (
                 <article key={name}>
                   <div>
@@ -232,7 +234,10 @@ export default function ProfileDetailModal({
                     <em style={{ width: `${value.score}%` }} />
                   </i>
                   <p>{value.label}</p>
-                  <small>概率乘数 ×{value.multiplier.toFixed(2)}</small>
+                  <small>
+                    人群百分位 {value.percentile.toFixed(1)}% · 概率乘数 ×
+                    {value.multiplier.toFixed(2)}
+                  </small>
                 </article>
               ))}
             </div>

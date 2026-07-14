@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { IconButton } from "./Common";
 import { formatWorldMoney } from "../simulation/probabilityModel";
+import { describeEmotion, normalizeEmotion } from "../simulation/emotionModel";
 
 export default function MobileSheet({
   mobileSheet,
@@ -25,6 +26,7 @@ export default function MobileSheet({
   onOpenLedger,
 }) {
   if (!mobileSheet) return null;
+  const emotion = describeEmotion(normalizeEmotion(state));
 
   return (
     <div className="mobile-sheet-backdrop" onClick={() => setMobileSheet(null)}>
@@ -59,8 +61,8 @@ export default function MobileSheet({
               </span>
               <span>
                 <Activity size={16} />
-                <small>心情</small>
-                <b>{state.mood}</b>
+                <small>情绪 · {emotion.label}</small>
+                <b>{emotion.value}</b>
               </span>
               <span>
                 <Target size={16} />

@@ -1,4 +1,11 @@
-import { buildWorldState } from "./worldModel";
+import { buildWorldState } from "./worldModel.js";
+import {
+  calculateAbilityOpportunity,
+  describeAbilityScore,
+  describeScore,
+} from "./scoreCalibration.js";
+import { deriveTalentPathways } from "./talentPathways.js";
+import { describeEmotion, normalizeEmotion } from "./emotionModel.js";
 
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 
@@ -15,127 +22,47 @@ const riskScore = (turn, pattern, fallback) => {
 
 const riskMultiplier = (score) => clamp(0.65 + score / 55, 0.55, 2.25);
 
-const band = (value, bands) =>
-  bands.find((item) => value < item.max) || bands[bands.length - 1];
-
-const SCORE_BANDS = {
-  appearance: [
-    {
-      max: 50,
-      label: "普通外貌，不形成显著命运优势",
-      multiplier: 0.85,
-      monetizable: false,
-    },
-    {
-      max: 60,
-      label: "略有亲和力，桃花与初见印象小幅提升",
-      multiplier: 1.12,
-      monetizable: false,
-    },
-    {
-      max: 70,
-      label: "外貌出众，社交与桃花机会明显提升",
-      multiplier: 1.45,
-      monetizable: false,
-    },
-    {
-      max: 80,
-      label: "高颜值，可显著影响曝光、恋爱和人脉",
-      multiplier: 2.15,
-      monetizable: true,
-    },
-    {
-      max: 90,
-      label: "稀缺外貌，具备稳定的形象商业价值",
-      multiplier: 3.0,
-      monetizable: true,
-    },
-    {
-      max: 101,
-      label: "顶级外貌，极少数场景可主要靠形象变现",
-      multiplier: 4.2,
-      monetizable: true,
-    },
-  ],
-  athletic: [
-    { max: 40, label: "体能偏弱，伤病与恢复风险上升", multiplier: 0.72 },
-    { max: 55, label: "普通体能，对人生路径影响较小", multiplier: 1 },
-    { max: 70, label: "体能良好，抗压与恢复能力提升", multiplier: 1.35 },
-    { max: 85, label: "运动优势明显，可解锁竞技与户外机会", multiplier: 1.9 },
-    { max: 101, label: "顶级运动天赋，具备专业化可能", multiplier: 2.8 },
-  ],
-  skill: [
-    { max: 40, label: "技能基础薄弱，学习和就业选择受限", multiplier: 0.68 },
-    { max: 55, label: "技能普通，主要依赖时间积累", multiplier: 1 },
-    { max: 70, label: "学习能力较强，职业成长开始加速", multiplier: 1.4 },
-    {
-      max: 85,
-      label: "专业能力突出，副业与跃迁概率显著提升",
-      multiplier: 2.05,
-    },
-    { max: 101, label: "稀缺技能天赋，具备行业头部潜力", multiplier: 3.1 },
-  ],
-  intelligence: [
-    { max: 40, label: "理解复杂概念较慢，更依赖重复练习", multiplier: 0.78 },
-    { max: 60, label: "智力普通，可处理常规学习与工作", multiplier: 1 },
-    { max: 75, label: "理解与迁移能力较强", multiplier: 1.35 },
-    { max: 90, label: "擅长高复杂度推理与快速学习", multiplier: 1.85 },
-    { max: 101, label: "极高认知潜力，但仍受人格与环境限制", multiplier: 2.5 },
-  ],
-  talent: [
-    { max: 40, label: "先天潜力普通，成长主要依赖长期投入", multiplier: 0.82 },
-    { max: 60, label: "潜力正常，不形成明显成长加速", multiplier: 1 },
-    { max: 75, label: "较容易在适配领域形成优势", multiplier: 1.3 },
-    { max: 90, label: "具备稀缺潜力，突破上限的概率更高", multiplier: 1.75 },
-    { max: 101, label: "顶级潜能，仍需要机会、训练与选择兑现", multiplier: 2.35 },
-  ],
-  financial: [
-    { max: 40, label: "容易忽略现金流、债务或风险定价", multiplier: 0.72 },
-    { max: 60, label: "财务判断普通，主要依赖经验", multiplier: 1 },
-    { max: 75, label: "能较好管理预算、负债与资产配置", multiplier: 1.35 },
-    { max: 90, label: "擅长识别风险收益与资金效率", multiplier: 1.85 },
-    { max: 101, label: "顶级财商，但无法消除市场风险与运气", multiplier: 2.45 },
-  ],
-};
-
-const traitEffect = (value) => {
-  if (value < 30) return { level: "很低", multiplier: 0.72 };
-  if (value < 50) return { level: "偏低", multiplier: 0.9 };
-  if (value < 65) return { level: "中等", multiplier: 1.05 };
-  if (value < 80) return { level: "较高", multiplier: 1.35 };
-  if (value < 90) return { level: "很高", multiplier: 1.75 };
-  return { level: "极端", multiplier: 2.25 };
-};
-
 export function buildAbilityModel(settings, state) {
-  const appearance = band(settings.talents?.颜值 ?? 50, SCORE_BANDS.appearance);
-  const athletic = band(settings.talents?.运动 ?? 50, SCORE_BANDS.athletic);
-  const skill = band(settings.talents?.技能 ?? 50, SCORE_BANDS.skill);
-  const intelligence = band(
-    settings.talents?.智力 ?? 50,
-    SCORE_BANDS.intelligence,
-  );
-  const talent = band(settings.talents?.天赋 ?? 50, SCORE_BANDS.talent);
-  const financial = band(
-    settings.talents?.财商 ?? 50,
-    SCORE_BANDS.financial,
-  );
+  const talentValue =
+    settings.talents?.天赋 != null && settings.talents?.技能 != null
+      ? Math.round((Number(settings.talents.天赋) + Number(settings.talents.技能)) / 2)
+      : Number(settings.talents?.天赋 ?? settings.talents?.技能 ?? 50);
+  const decisionStyleValue =
+    settings.traits?.决策风格 != null
+      ? Number(settings.traits.决策风格)
+      : Math.round(
+          (Number(settings.traits?.理性 ?? 50) +
+            (100 - Number(settings.traits?.冒险 ?? 50))) /
+            2,
+        );
+  const appearance = describeAbilityScore("颜值", settings.talents?.颜值 ?? 50);
+  const athletic = describeAbilityScore("运动", settings.talents?.运动 ?? 50);
+  const intelligence = describeAbilityScore("智力", settings.talents?.智力 ?? 50);
+  const talent = describeAbilityScore("天赋", talentValue);
+  const financial = describeAbilityScore("财商", settings.talents?.财商 ?? 50);
+  const social = describeAbilityScore("社交", settings.talents?.社交 ?? 50);
   const traits = Object.fromEntries(
-    Object.entries(settings.traits || {}).map(([name, value]) => [
+    Object.entries({
+      决策风格: decisionStyleValue,
+      家庭: settings.traits?.家庭 ?? 50,
+      好奇: settings.traits?.好奇 ?? 50,
+    }).map(([name, value]) => [
       name,
-      { score: value, ...traitEffect(value) },
+      describeScore(value, { multiplierPower: 0.45 }),
     ]),
   );
+  const emotion = describeEmotion(normalizeEmotion(state));
+  const adventure = describeScore(100 - decisionStyleValue, {
+    multiplierPower: 0.45,
+  });
   return {
-    appearance: { score: settings.talents?.颜值 ?? 50, ...appearance },
-    athletic: { score: settings.talents?.运动 ?? 50, ...athletic },
-    skill: { score: settings.talents?.技能 ?? 50, ...skill },
-    intelligence: {
-      score: settings.talents?.智力 ?? 50,
-      ...intelligence,
-    },
-    talent: { score: settings.talents?.天赋 ?? 50, ...talent },
-    financial: { score: settings.talents?.财商 ?? 50, ...financial },
+    appearance,
+    athletic,
+    intelligence,
+    talent,
+    financial,
+    social,
+    adventure,
     body: {
       adultHeightCm: state.bodyProfile?.adultHeightCm,
       currentHeightCm: state.bodyProfile?.currentHeightCm,
@@ -155,14 +82,9 @@ export function buildAbilityModel(settings, state) {
             : state.health > 85
               ? 1.18
               : 1,
-      moodMultiplier:
-        state.mood < 30
-          ? 0.6
-          : state.mood < 55
-            ? 0.86
-            : state.mood > 85
-              ? 1.2
-              : 1,
+      emotionMultiplier: emotion.actionMultiplier,
+      actionDrive: emotion.actionDrive,
+      emotion,
       careerMultiplier:
         state.career < 40
           ? 0.85
@@ -185,7 +107,7 @@ export function buildRandomEventField(
 ) {
   const model = buildAbilityModel(settings, state);
   const worldState = buildWorldState(settings, month, logs);
-  const adventure = model.traits.冒险?.multiplier || 1;
+  const adventure = model.adventure.multiplier;
   const curiosity = model.traits.好奇?.multiplier || 1;
   const exposure = /旅行|户外|骑行|驾驶|夜班|加班|创业/.test(
     `${turn?.title || ""}${turn?.decision || ""}`,
@@ -212,8 +134,8 @@ export function buildRandomEventField(
       valence: "favorable",
       probability:
         0.012 *
-        model.skill.multiplier *
-        Math.sqrt(model.intelligence.multiplier * model.talent.multiplier) *
+        model.talent.multiplier *
+        Math.sqrt(model.intelligence.multiplier * model.social.multiplier) *
         curiosity *
         riskMultiplier(risks.opportunity) *
         (1 + worldState.modifiers.opportunityWeight),
@@ -252,13 +174,27 @@ export function buildRandomEventField(
         Math.max(0.55, model.athletic.multiplier),
     },
     {
+      key: "emotionalCrisis",
+      label: "心理危机或求助节点",
+      valence: "adverse",
+      probability:
+        model.condition.emotion.crisisLevel === "critical"
+          ? 0.32
+          : model.condition.emotion.crisisLevel === "elevated"
+            ? 0.18
+            : model.condition.emotion.crisisLevel === "watch"
+              ? 0.06
+              : 0,
+    },
+    {
       key: "viralExposure",
       label: "作品突然传播或走红",
       valence: "favorable",
       probability:
         0.00035 *
-        model.skill.multiplier *
+        model.talent.multiplier *
         model.appearance.multiplier *
+        model.social.multiplier *
         riskMultiplier(risks.opportunity),
     },
     {
@@ -339,17 +275,18 @@ export function calculateOutcomeProbabilities(
   );
   const debt = Math.max(liabilities, Number(state.debt || 0));
   const debtPressure = Math.min(0.12, (debt / resources) * 0.04);
+  const emotion = model.condition.emotion;
   const lowCondition =
     (state.health < 55 ? (55 - state.health) / 180 : 0) +
-    (state.mood < 50 ? (50 - state.mood) / 220 : 0);
+    (emotion.value < 50 ? (50 - emotion.value) / 160 : 0);
+  const abilityOpportunity = calculateAbilityOpportunity(model);
+  const actionFactor = clamp(model.condition.emotionMultiplier, 0.35, 1.18);
   const favorableWeight =
-    0.24 +
-    (risks.opportunity / 100) * 0.08 +
-    Math.max(0, model.skill.multiplier - 1) * 0.02 +
-    Math.max(0, model.intelligence.multiplier - 1) * 0.012 +
-    Math.max(0, model.talent.multiplier - 1) * 0.012 +
-    Math.max(0, model.financial.multiplier - 1) * 0.008 +
-    worldState.modifiers.opportunityWeight;
+    (0.24 +
+      (risks.opportunity / 100) * 0.08 +
+      abilityOpportunity +
+      worldState.modifiers.opportunityWeight) *
+    actionFactor;
   const adverseWeight =
     0.2 +
     ((risks.financial + risks.health + risks.relationship) / 300) * 0.12 +
@@ -360,7 +297,7 @@ export function calculateOutcomeProbabilities(
     favorable: favorableWeight,
     mixed: 0.3,
     adverse: adverseWeight,
-    stagnant: 0.26,
+    stagnant: 0.26 + (1 - model.condition.emotionMultiplier) * 0.18,
   };
   const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
   const probabilities = Object.fromEntries(
@@ -372,11 +309,10 @@ export function calculateOutcomeProbabilities(
     factors: {
       debtPressure,
       lowCondition,
-      abilityOpportunity:
-        Math.max(0, model.skill.multiplier - 1) * 0.02 +
-        Math.max(0, model.intelligence.multiplier - 1) * 0.012 +
-        Math.max(0, model.talent.multiplier - 1) * 0.012 +
-        Math.max(0, model.financial.multiplier - 1) * 0.008,
+      emotion: model.condition.emotion,
+      actionDrive: model.condition.actionDrive,
+      actionFactor,
+      abilityOpportunity,
       worldOpportunity: worldState.modifiers.opportunityWeight,
       worldAdverse: worldState.modifiers.adverseWeight,
       weights,
@@ -453,9 +389,10 @@ export function buildLifeStageField(
   const adaptations = (settings.personalityProfile?.adaptations || [])
     .map((item) => `${item.key || ""}${item.dimension || ""}`)
     .join(" ");
-  const adventure = model.traits.冒险?.multiplier || 1;
+  const adventure = model.adventure.multiplier;
   const curiosity = model.traits.好奇?.multiplier || 1;
   const family = model.traits.家庭?.multiplier || 1;
+  const talentPathways = deriveTalentPathways(settings, age);
   const romanticCaution = /romanticCaution|intimacy|socialCaution/.test(
     adaptations,
   )
@@ -653,6 +590,16 @@ export function buildLifeStageField(
     ];
   }
 
+  if (age < 18 && talentPathways.some((item) => item.exceptional)) {
+    const leadPathway = talentPathways[0];
+    definitions.push([
+      "talentTrackExposure",
+      `${leadPathway.label}入口或选拔机会`,
+      Math.min(0.78, 0.12 + leadPathway.exposureBoost * 0.24),
+      `${leadPathway.guidance}。这只是获得接触、训练或选拔入口，不代表成功，也不要求放弃普通学校生活。`,
+    ]);
+  }
+
   return {
     age,
     stage,
@@ -671,11 +618,11 @@ export function buildLifeStageField(
       };
     }),
     traitContext: {
-      理性: Number(traits.理性 ?? 50),
-      冒险: Number(traits.冒险 ?? 50),
+      决策风格: Number(traits.决策风格 ?? 50),
       家庭: Number(traits.家庭 ?? 50),
       好奇: Number(traits.好奇 ?? 50),
     },
+    talentPathways,
   };
 }
 

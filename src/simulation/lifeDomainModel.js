@@ -1,3 +1,6 @@
+import { deriveTalentPathways } from "./talentPathways.js";
+import { describeEmotion, normalizeEmotion } from "./emotionModel.js";
+
 const DOMAIN_DEFINITIONS = {
   daily: {
     label: "日常生活与休息",
@@ -44,6 +47,11 @@ const DOMAIN_DEFINITIONS = {
     patterns: /学习|读书|考试|课程|学校|升学|训练/,
     guidance: "学习可以进步、走神、厌倦、转兴趣或无功而返，不自动兑换成技能。",
   },
+  talent: {
+    label: "天赋赛道与专项发展",
+    patterns: /天赋|专项|校队|体校|俱乐部|竞赛|表演|舞蹈|器乐|绘画|编程|创作|选拔/,
+    guidance: "让突出的能力通过真实入口被发现、训练或错过；不默认回到课内成绩，也不保证成功。",
+  },
 };
 
 const weightedPick = (items, random = Math.random) => {
@@ -61,11 +69,21 @@ export function buildLifeDomainField(
   logs = [],
   age = 18,
   random = Math.random,
+  state = {},
 ) {
   const recentText = logs
     .slice(-3)
     .map((entry) => `${entry.tag || ""}${entry.title || ""}`)
     .join(" ");
+  const talentPathways = deriveTalentPathways(settings, age);
+  const emotion = describeEmotion(normalizeEmotion(state));
+  const talentWeightBoost = Math.min(
+    42,
+    talentPathways.reduce(
+      (sum, pathway) => sum + Math.max(0, pathway.score - 65) * 0.7,
+      0,
+    ),
+  );
   const adultWeights = {
     daily: 19,
     leisure: 20,
@@ -76,6 +94,7 @@ export function buildLifeDomainField(
     consumption: 15,
     career: 3,
     learning: 2,
+    talent: 5 + talentWeightBoost * 0.35,
   };
   const youthWeights = {
     daily: 16,
@@ -87,6 +106,7 @@ export function buildLifeDomainField(
     consumption: 8,
     career: 1,
     learning: 12,
+    talent: 5 + talentWeightBoost,
   };
   const baseWeights = age < 18 ? youthWeights : adultWeights;
   const candidates = Object.entries(DOMAIN_DEFINITIONS).map(
@@ -95,22 +115,45 @@ export function buildLifeDomainField(
       const careerLoop =
         ["career", "learning"].includes(key) &&
         /工作|事业|项目|学习|考试|读书|课程/.test(recentText);
+      const activeDomain = [
+        "travel",
+        "consumption",
+        "career",
+        "learning",
+        "talent",
+      ].includes(key);
+      const recoveryDomain = ["daily", "health", "family"].includes(key);
+      const emotionWeight = activeDomain
+        ? Math.max(0.25, emotion.actionMultiplier)
+        : recoveryDomain
+          ? 1 + Math.max(0, 1 - emotion.actionMultiplier) * 1.6
+          : 1;
       return {
         key,
         ...definition,
         weight:
           baseWeights[key] * (repeated ? 0.2 : 1) * (careerLoop ? 0.2 : 1),
+        emotionWeight,
       };
     },
   );
+  candidates.forEach((candidate) => {
+    candidate.weight *= candidate.emotionWeight;
+  });
   const selected = weightedPick(candidates, random);
+  const pathwayGuidance = talentPathways.length
+    ? `${talentPathways.map((item) => `${item.label}（${item.score}）`).join("、")}。${talentPathways[0].guidance}`
+    : selected.guidance;
   return {
     freedomLevel: settings.freedomLevel || "high",
     selected: {
       key: selected.key,
       label: selected.label,
-      guidance: selected.guidance,
+      guidance: selected.key === "talent" ? pathwayGuidance : selected.guidance,
     },
+    talentPathways,
+    emotion,
+    weights: Object.fromEntries(candidates.map((item) => [item.key, item.weight])),
     recentFocusPenalty: candidates
       .filter((item) => item.weight < baseWeights[item.key])
       .map((item) => item.label),

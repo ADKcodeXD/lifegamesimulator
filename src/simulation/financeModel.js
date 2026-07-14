@@ -5,6 +5,7 @@ import {
   LIABILITY_ACCOUNTS,
   TRANSACTION_KIND_LABELS,
 } from "../data/financialConfig.ts";
+import { normalizeEmotion } from "./emotionModel.js";
 
 const finite = (value, fallback = 0) => {
   const number = Number(value);
@@ -29,7 +30,7 @@ export const createInitialState = (initialCash = 1000) => {
     debt: 0,
     income: 0,
     health: 86,
-    mood: 72,
+    emotion: 72,
     career: 12,
     assets: { ...EMPTY_ASSETS },
     liabilities: { ...EMPTY_LIABILITIES },
@@ -52,6 +53,8 @@ export const createInitialState = (initialCash = 1000) => {
 };
 
 export function normalizeFinancialState(rawState = {}, fallbackCash = 1000) {
+  const stateWithoutLegacyMood = { ...rawState };
+  delete stateWithoutLegacyMood.mood;
   const cash = finite(rawState.cash, fallbackCash);
   const assets = normalizeRecord(rawState.assets, EMPTY_ASSETS);
   const liabilities = normalizeRecord(rawState.liabilities, EMPTY_LIABILITIES);
@@ -79,12 +82,12 @@ export function normalizeFinancialState(rawState = {}, fallbackCash = 1000) {
       ];
 
   return {
-    ...rawState,
+    ...stateWithoutLegacyMood,
     cash,
     debt,
     income: Math.max(0, finite(rawState.income)),
     health: finite(rawState.health, 86),
-    mood: finite(rawState.mood, 72),
+    emotion: normalizeEmotion(rawState),
     career: finite(rawState.career, 12),
     assets,
     liabilities,
@@ -176,9 +179,18 @@ function recurringTransactions(current, result, context) {
   }
 
   if (age >= 18) {
-    const student = /在校|学生|就读/.test(
-      `${context.resume?.employmentStatus || ""}${context.resume?.currentRole || ""}`,
-    );
+    const financialStatus = `${context.resume?.employmentStatus || ""} ${
+      context.resume?.currentRole || ""
+    } ${context.resume?.education || ""} ${result.statusLabel || ""} ${
+      result.resumeUpdate?.employmentStatus || ""
+    } ${result.resumeUpdate?.currentRole || ""}`;
+    const student = /在校|学生|就读|高中|中职|职高|大学|学院/.test(financialStatus);
+    const financiallyIndependent =
+      /在职|已就业|就业中|全职|自由职业|创业|经济独立|独立生活|独居|租房|搬出父母家/.test(
+        financialStatus,
+      );
+    const dependentStudent = student && !financiallyIndependent;
+    if (dependentStudent) return additions;
     const world = context.settings?.world || "";
     const cityMultiplier = /北京|上海|深圳|纽约|旧金山|东京|新加坡/.test(
       world,

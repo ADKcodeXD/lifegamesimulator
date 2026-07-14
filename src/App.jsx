@@ -84,6 +84,7 @@ import {
   createBodyProfile,
   normalizeBodyProfile,
 } from "./simulation/bodyModel";
+import { reconcileEducationTimeline } from "./simulation/educationTimeline";
 import {
   Activity,
   ArrowRight,
@@ -125,14 +126,31 @@ const LANDING_ICONS = {
   people: UsersRound,
 };
 
-const normalizeResume = (resume, settings) => {
+const normalizeResume = (resume, settings, month = 0) => {
   const fallback = createInitialResume(settings);
-  return {
+  const normalized = {
     ...fallback,
     ...(resume || {}),
     skills: normalizeSkills(resume?.skills),
     experiences: Array.isArray(resume?.experiences) ? resume.experiences : [],
   };
+  const age = (settings.startAge ?? 18) + Math.floor((month || 0) / 12);
+  return reconcileEducationTimeline({
+    result: { resumeUpdate: normalized },
+    resume: normalized,
+    endAge: age,
+    endMonth: month,
+  }).resumeUpdate;
+};
+
+const normalizeTurnTimeline = (turn, resume, settings, month = 0) => {
+  const age = (settings.startAge ?? 18) + Math.floor((month || 0) / 12);
+  return reconcileEducationTimeline({
+    result: turn || blankTurn,
+    resume,
+    endAge: age,
+    endMonth: month,
+  });
 };
 
 const createStateForSettings = (settings) => ({
@@ -583,6 +601,11 @@ export default function App() {
         npcData.relations,
         savedSettings,
       );
+      const savedResume = normalizeResume(
+        save.resume,
+        savedSettings,
+        save.month || 0,
+      );
       setSettings(savedSettings);
       setState(
         normalizeStateForSettings(
@@ -592,13 +615,20 @@ export default function App() {
         ),
       );
       setRelations(npcData.relations);
-      setTurn(save.turn);
+      setTurn(
+        normalizeTurnTimeline(
+          save.turn,
+          savedResume,
+          savedSettings,
+          save.month || 0,
+        ),
+      );
       setLogs(save.logs || [createPrologueLog(save.settings)]);
       setMonth(save.month);
       setNpcProfiles(savedNpcProfiles);
       setSocialEdges(npcData.socialEdges);
       setHistoricalContacts(npcData.historicalContacts);
-      setResume(normalizeResume(save.resume, save.settings || settings));
+      setResume(savedResume);
       setHistory(save.history || []);
       setPlaybackIndex((save.history || []).length);
       setStarted(true);
@@ -634,14 +664,26 @@ export default function App() {
           (importedSettings.startAge ?? 18) +
             Math.floor((data.month || 0) / 12),
         );
+        const importedResume = normalizeResume(
+          data.resume,
+          importedSettings,
+          data.month || 0,
+        );
         setSettings(importedSettings);
         setState(importedState);
         setRelations(npcData.relations);
         setNpcProfiles(importedNpcProfiles);
         setSocialEdges(npcData.socialEdges);
         setHistoricalContacts(npcData.historicalContacts);
-        setResume(normalizeResume(data.resume, data.settings));
-        setTurn(data.turn || blankTurn);
+        setResume(importedResume);
+        setTurn(
+          normalizeTurnTimeline(
+            data.turn,
+            importedResume,
+            importedSettings,
+            data.month || 0,
+          ),
+        );
         setLogs(data.logs || [createPrologueLog(data.settings)]);
         setMonth(data.month || 0);
         setHistory(data.history || []);
@@ -722,6 +764,11 @@ export default function App() {
     const s = history[i - 1];
     if (s) {
       const snapshotSettings = normalizeSettings(s.settings || settings);
+      const snapshotResume = normalizeResume(
+        s.resume,
+        snapshotSettings,
+        s.month || 0,
+      );
       setMonth(s.month);
       setState(
         normalizeStateForSettings(
@@ -740,8 +787,15 @@ export default function App() {
       );
       setSocialEdges(s.socialEdges || INITIAL_SOCIAL_EDGES);
       setHistoricalContacts(s.historicalContacts || []);
-      setResume(normalizeResume(s.resume, snapshotSettings));
-      setTurn(s.turn);
+      setResume(snapshotResume);
+      setTurn(
+        normalizeTurnTimeline(
+          s.turn,
+          snapshotResume,
+          snapshotSettings,
+          s.month || 0,
+        ),
+      );
       setSettings(snapshotSettings);
       setLogs(s.logs);
     }
