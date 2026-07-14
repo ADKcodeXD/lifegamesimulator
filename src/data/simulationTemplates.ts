@@ -1,5 +1,5 @@
 export const SIMULATION_CONFIG = {
-  saveVersion: 6,
+  saveVersion: 7,
   defaultNpcEmoji: "🙂",
 };
 

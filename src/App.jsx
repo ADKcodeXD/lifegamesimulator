@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useReducer, useState, useRef } from "react";
 import EventCard from "./components/EventCard";
 import { IconButton, Logo, Stat } from "./components/Common";
 import RelationshipGraphModal from "./components/RelationshipGraphModal";
@@ -17,6 +17,16 @@ import AssetLedgerModal from "./components/AssetLedgerModal";
 import WorldOverview from "./components/WorldOverview";
 import TurnBulletinModal from "./components/TurnBulletinModal";
 import {
+  GAME_PHASES,
+  gameMachineReducer,
+  initialGameMachine,
+  isMachineBusy,
+  progressPhaseFor,
+} from "./simulation/gameMachine";
+import { resolveTurn } from "./simulation/turnResolver";
+import { serializeGameSave } from "./simulation/snapshot";
+import { createSeededRandom, createTurnSeed } from "./utils/prng";
+import {
   FAMILY_LEVELS,
   parentToRelation,
   parentsForFamily,
@@ -24,7 +34,6 @@ import {
 import { FREEDOM_LEVELS, normalizeSettings } from "./data/setupConfig";
 import { DEFAULT_LLM_CONFIG, LLM_STORAGE_KEYS } from "./data/llmConfig";
 import {
-  createFallbackNpcProfile,
   createPrologueLog,
   LANDING_FEATURES,
   MILESTONE_PATTERN,
@@ -44,25 +53,15 @@ import {
   STATUS_TAGS,
 } from "./data/gameState";
 import {
-  applyFinancialTurn,
   calculateFinancialSummary,
   normalizeFinancialState,
 } from "./simulation/financeModel";
-import { reconcileSkillTurn, normalizeSkills } from "./simulation/skillModel";
-import {
-  enrichNpcProfile,
-  evolveNpcNetwork,
-  removeLegacyFixedContact,
-} from "./simulation/npcLifecycle";
+import { normalizeSkills } from "./simulation/skillModel";
+import { removeLegacyFixedContact } from "./simulation/npcLifecycle";
 import {
   normalizeNpcInteractionHistories,
-  recordArchivedInteractions,
-  recordProtagonistInteractions,
 } from "./simulation/relationshipHistory";
-import {
-  applyPersonalityTurn,
-  createInitialPersonalityProfile,
-} from "./simulation/personalityModel";
+import { createInitialPersonalityProfile } from "./simulation/personalityModel";
 import {
   callLifeSummary,
   callSimulator,
@@ -78,13 +77,11 @@ import {
 } from "./simulation/probabilityModel";
 import { buildWorldState } from "./simulation/worldModel";
 import {
-  consumeSelectedDirection,
   getDirectionChoices,
   selectDirection,
 } from "./simulation/directionModel";
 import {
   createBodyProfile,
-  evolveBodyProfile,
   normalizeBodyProfile,
 } from "./simulation/bodyModel";
 import {
@@ -128,44 +125,6 @@ const LANDING_ICONS = {
   people: UsersRound,
 };
 
-const classifyBulletin = (result = {}) => {
-  const text = `${result.title || ""} ${result.tag || ""} ${result.event || ""}`;
-  if (result.death?.occurred) return { variant: "death", label: "生命终结" };
-  if (/结婚|婚礼|领证|成婚/.test(text))
-    return { variant: "marriage", label: "缔结婚姻" };
-  const direction = result.outcomeAudit?.direction;
-  if (direction === "favorable")
-    return { variant: "success", label: "有利结算" };
-  if (direction === "adverse") return { variant: "failure", label: "不利结算" };
-  return {
-    variant: "effort",
-    label: direction === "stagnant" ? "努力未兑现" : "继续积累",
-  };
-};
-
-const shouldShowBulletin = (result, majorAssets, lifeDeltas) => {
-  const text = `${result.title || ""} ${result.tag || ""} ${result.event || ""}`;
-  const majorWorldEvent = (result.worldEvents || []).some(
-    (event) => Number(event?.intensity) >= 70,
-  );
-  const majorLifeDelta = lifeDeltas.some(
-    (item) =>
-      (item.label === "健康" && Math.abs(item.value) >= 20) ||
-      (item.label === "事业" && Math.abs(item.value) >= 25),
-  );
-  const majorRelationship = (result.relationshipChanges || []).some(
-    (change) => Math.abs(Number(change?.delta) || 0) >= 35,
-  );
-  return Boolean(
-    result.death?.occurred ||
-      MILESTONE_PATTERN.test(text) ||
-      majorAssets.length ||
-      majorWorldEvent ||
-      majorLifeDelta ||
-      majorRelationship,
-  );
-};
-
 const normalizeResume = (resume, settings) => {
   const fallback = createInitialResume(settings);
   return {
@@ -195,7 +154,6 @@ export default function App() {
     [setupOpen, setSetupOpen] = useState(false),
     [planOpen, setPlanOpen] = useState(false),
     [keyOpen, setKeyOpen] = useState(false),
-    [simulating, setSimulating] = useState(false),
     [summaryOpen, setSummaryOpen] = useState(false),
     [historyOpen, setHistoryOpen] = useState(false),
     [summaryLoading, setSummaryLoading] = useState(false),
@@ -218,7 +176,12 @@ export default function App() {
   );
   const [pendingApproval, setPendingApproval] = useState(null);
   const [simulationTrace, setSimulationTrace] = useState(null);
-  const [simulationPhase, setSimulationPhase] = useState("reading");
+  const [gameMachine, dispatchGame] = useReducer(
+    gameMachineReducer,
+    initialGameMachine,
+  );
+  const simulating = isMachineBusy(gameMachine.phase);
+  const simulationPhase = progressPhaseFor(gameMachine.phase);
   const [profileDetailOpen, setProfileDetailOpen] = useState(false);
   const approvalResolverRef = useRef(null);
   const [apiKey, setApiKey] = useState(
@@ -352,9 +315,8 @@ export default function App() {
       setKeyOpen(true);
       return;
     }
-    setSimulating(true);
+    dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.PREPARING });
     setSimulationTrace(null);
-    setSimulationPhase("reading");
     playUiSound("turn", soundEnabled);
     setEventExpanded(false);
     setError("");
@@ -367,7 +329,17 @@ export default function App() {
       let approvalDecision = null;
       const freedom =
         FREEDOM_LEVELS[settings.freedomLevel] || FREEDOM_LEVELS.high;
-      if (Math.random() < freedom.approvalChance) {
+      const randomSeed = createTurnSeed({
+        settings,
+        month,
+        turnNumber: logs.length,
+      });
+      const approvalRandom = createSeededRandom(`${randomSeed}:approval`);
+      if (approvalRandom() < freedom.approvalChance) {
+        dispatchGame({
+          type: "TRANSITION",
+          phase: GAME_PHASES.AWAITING_APPROVAL,
+        });
         const approvalRequest = await generateApprovalRequest(llmConfig, {
           settings,
           state,
@@ -383,6 +355,7 @@ export default function App() {
           setPendingApproval({ ...approvalRequest, requestId: Date.now() });
         });
       }
+      dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.GENERATING });
       const result = await callSimulator(llmConfig, {
         settings,
         state,
@@ -396,7 +369,9 @@ export default function App() {
         npcProfiles,
         historicalContacts,
         publicTrace: null,
+        randomSeed,
       });
+      dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.VALIDATING });
       playUiSound(
         result.outcomeAudit?.direction === "adverse"
           ? "low"
@@ -405,293 +380,39 @@ export default function App() {
             : "reveal",
         soundEnabled,
       );
-      const skillTurn = reconcileSkillTurn(resume.skills, result);
-      const d = result.stateDelta || {};
-      const turnMonths = settings.monthsPerTurn || 6;
-      const nextMonth = month + turnMonths;
-      const yearsPassed = Math.floor(nextMonth / 12) - Math.floor(month / 12);
-      const nextProtagonistAge =
-        (settings.startAge ?? 18) + Math.floor(nextMonth / 12);
-      const inactiveCareer = /失业|待业|空窗|Gap|停工|退休|休学/.test(
-        `${result.statusLabel || ""} ${result.tag || ""} ${result.resumeUpdate?.employmentStatus || ""}`,
-      );
-      const stateDrift = {
-        health:
-          nextProtagonistAge >= 55
-            ? -yearsPassed *
-              Math.max(1, Math.floor((nextProtagonistAge - 45) / 30))
-            : 0,
-        career: inactiveCareer
-          ? -Math.max(yearsPassed * 2, turnMonths >= 6 ? 1 : 0)
-          : 0,
-      };
-      const financialTurn = applyFinancialTurn(state, result, {
-        month,
-        age,
-        monthOfYear,
-        monthsPerTurn: turnMonths,
-        settings,
-        resume,
-        monthlyIncome: result.monthlyIncome ?? state.income ?? 0,
-        time: `${age}岁 · ${monthOfYear}月`,
-        title: result.title,
-      });
-      const nextState = {
-        ...financialTurn.state,
-        income: Math.max(0, result.monthlyIncome ?? state.income ?? 0),
-        health: clamp(state.health + (d.health || 0) + stateDrift.health),
-        mood: clamp(state.mood + (d.mood || 0)),
-        career: clamp(state.career + (d.career || 0) + stateDrift.career),
-        bodyProfile: evolveBodyProfile(
-          state.bodyProfile,
-          settings,
-          result,
-          nextProtagonistAge,
-        ),
-      };
-      const nextSettings = {
-        ...consumeSelectedDirection(settings),
-        traits: Object.fromEntries(
-          Object.entries(settings.traits).map(([k, v]) => [
-            k,
-            clamp(v + (result.traitDelta?.[k] || 0)),
-          ]),
-        ),
-      };
-      const nextRelations = [...relations];
-      for (const c of result.relationshipChanges || []) {
-        const i = nextRelations.findIndex((r) => r.name === c.name);
-        if (i >= 0)
-          nextRelations[i] = {
-            ...nextRelations[i],
-            ...c,
-            value: clamp(nextRelations[i].value + (Number(c.delta) || 0)),
-            status: c.status || nextRelations[i].status,
-          };
-        else
-          nextRelations.push({
-            ...c,
-            name: c.name,
-            emoji: c.emoji || SIMULATION_CONFIG.defaultNpcEmoji,
-            value: clamp(50 + (Number(c.delta) || 0)),
-            status: c.status || "新关系",
-          });
-      }
-      const nextSocialEdges = [...socialEdges];
-      for (const change of result.npcRelationshipChanges || []) {
-        if (!change.source || !change.target || change.source === change.target)
-          continue;
-        const index = nextSocialEdges.findIndex(
-          (edge) =>
-            (edge.source === change.source && edge.target === change.target) ||
-            (edge.source === change.target && edge.target === change.source),
-        );
-        if (index >= 0) {
-          nextSocialEdges[index] = {
-            ...nextSocialEdges[index],
-            ...change,
-            value: clamp(nextSocialEdges[index].value + (change.delta || 0)),
-          };
-        } else {
-          nextSocialEdges.push({
-            ...change,
-            value: clamp(50 + (change.delta || 0)),
-          });
-        }
-      }
-      const existingNpcNames = new Set(relations.map((item) => item.name));
-      const newContactNames = (result.relationshipChanges || [])
-        .map((item) => item.name)
-        .filter((name) => name && !existingNpcNames.has(name));
-      nextSettings.personalityProfile = applyPersonalityTurn(
-        settings.personalityProfile,
-        result,
+      dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.SETTLING });
+      const resolved = resolveTurn(
         {
-          age: nextProtagonistAge,
-          settings: nextSettings,
-          relationshipChanges: result.relationshipChanges || [],
+          settings,
+          state,
+          relations,
+          logs,
+          month,
+          turn,
+          resume,
+          socialEdges,
+          npcProfiles,
+          historicalContacts,
         },
+        result,
+        approvalDecision,
       );
-      let newProfiles = normalizeNpcInteractionHistories(
-        npcProfiles,
-        relations,
-        settings,
-      );
-      for (const profile of result.npcProfiles || []) {
-        if (!profile.name) continue;
-        const isNew = !newProfiles[profile.name];
-        newProfiles[profile.name] = enrichNpcProfile(
-          { ...newProfiles[profile.name], ...profile },
-          nextProtagonistAge,
-          isNew,
-        );
+      const snapshot = resolved.snapshot;
+      setState(snapshot.state);
+      setSettings(snapshot.settings);
+      setRelations(snapshot.relations);
+      setSocialEdges(snapshot.socialEdges);
+      setHistoricalContacts(snapshot.historicalContacts);
+      setResume(snapshot.resume);
+      setTurn(snapshot.turn);
+      setLogs(snapshot.logs);
+      setMonth(snapshot.month);
+      setNpcProfiles(snapshot.npcProfiles);
+      if (resolved.notification) {
+        dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.MAJOR_EVENT });
+        setTurnBulletin(resolved.notification);
       }
-      for (const change of result.relationshipChanges || []) {
-        if (change.name && !newProfiles[change.name]) {
-          newProfiles[change.name] = createFallbackNpcProfile(
-            change,
-            nextProtagonistAge,
-          );
-        }
-      }
-      newProfiles = recordProtagonistInteractions({
-        npcProfiles: newProfiles,
-        previousRelations: relations,
-        nextRelations,
-        historicalContacts,
-        changes: result.relationshipChanges || [],
-        context: {
-          age: nextProtagonistAge,
-          title: result.title,
-          event: result.event,
-          summary: result.summary,
-        },
-      });
-      const resumeUpdate = result.resumeUpdate || {};
-      const resumeEntry = resumeUpdate.entry;
-      const nextResume = {
-        ...resume,
-        currentRole: resumeUpdate.currentRole || resume.currentRole,
-        organization: resumeUpdate.organization ?? resume.organization,
-        employmentStatus:
-          resumeUpdate.employmentStatus || resume.employmentStatus,
-        education: resumeUpdate.education || resume.education,
-        skills: skillTurn.available,
-        experiences: resumeEntry
-          ? [...(resume.experiences || []), resumeEntry].slice(-80)
-          : resume.experiences || [],
-      };
-      const interactionNames = [
-        ...(result.relationshipChanges || []).map((item) => item.name),
-        ...(result.npcRelationshipChanges || []).flatMap((item) => [
-          item.source,
-          item.target,
-        ]),
-      ].filter(Boolean);
-      const evolvedNetwork = evolveNpcNetwork({
-        relations: nextRelations,
-        npcProfiles: newProfiles,
-        socialEdges: nextSocialEdges,
-        historicalContacts,
-        yearsPassed,
-        interactionNames,
-        annualUpdates: result.npcLifecycleUpdates || [],
-        protagonistAge: nextProtagonistAge,
-        newContactNames,
-      });
-      evolvedNetwork.npcProfiles = recordArchivedInteractions(
-        evolvedNetwork.npcProfiles,
-        evolvedNetwork.archivedNow,
-        nextProtagonistAge,
-      );
-      const nextTurn = {
-          ...blankTurn,
-          ...result,
-          skillsGained: skillTurn.gained,
-          skillsLost: skillTurn.lost,
-          skillsUsed: skillTurn.used,
-          skillsAvailable: skillTurn.available,
-          cashflow: financialTurn.cashflow,
-          netWorthChange: financialTurn.netWorthChange,
-          financialEntries: financialTurn.entries,
-          approval: approvalDecision,
-        },
-        nextLog = {
-          time: `${age}岁 · ${monthOfYear}月`,
-          month: month,
-          title: result.title,
-          text: result.log || result.decision,
-          tag: result.tag,
-          event: result.event,
-          thought: result.thought,
-          decision: result.decision,
-          reason: result.reason,
-          summary: result.summary || "",
-          gains: result.gains || [],
-          losses: result.losses || [],
-          cashflow: financialTurn.cashflow,
-          netWorthChange: financialTurn.netWorthChange,
-          financialEntries: financialTurn.entries,
-          roi: result.roi,
-          worldChange: result.worldChange,
-          worldEvents: result.worldEvents || [],
-          worldStateUpdate: result.worldStateUpdate || null,
-          death: result.death || { occurred: false },
-          skillsGained: skillTurn.gained,
-          skillsLost: skillTurn.lost,
-          skillsUsed: skillTurn.used,
-          skillsAvailable: skillTurn.available,
-          physicalStatus: result.physicalStatus || null,
-          learningStatus: result.learningStatus || null,
-          stateDelta: result.stateDelta || {},
-          relationshipChanges: result.relationshipChanges || [],
-          relationshipSummary: result.relationshipSummary || "",
-          intimacySummary: result.intimacySummary || "",
-          npcRelationshipChanges: result.npcRelationshipChanges || [],
-          npcLifecycleUpdates: result.npcLifecycleUpdates || [],
-          personalityUpdate: result.personalityUpdate || null,
-          archivedContacts: evolvedNetwork.archivedNow.map((item) => item.name),
-          resumeEntry: resumeEntry || null,
-          randomEventAudit: result.randomEventAudit || null,
-          outcomeAudit: result.outcomeAudit || null,
-          lifeStageAudit: result.lifeStageAudit || null,
-          decisionBasis: result.decisionBasis || null,
-          approval: approvalDecision,
-        },
-        nextLogs = [...logs, nextLog];
-      setState(nextState);
-      setSettings(nextSettings);
-      setRelations(evolvedNetwork.relations);
-      setSocialEdges(evolvedNetwork.socialEdges);
-      setHistoricalContacts(evolvedNetwork.historicalContacts);
-      setResume(nextResume);
-      setTurn(nextTurn);
-      setLogs(nextLogs);
-      setMonth(nextMonth);
-      setNpcProfiles(evolvedNetwork.npcProfiles);
-      const majorAssets = financialTurn.entries.filter(
-        (entry) =>
-          ["buy_asset", "sell_asset"].includes(entry.kind) ||
-          ["realEstate", "vehicles"].includes(entry.account) ||
-          Math.abs(Number(entry.assetDelta) || 0) >=
-            Math.max(50000, Math.abs(financialSummary.netWorth) * 0.2),
-      );
-      const lifeDeltas = [
-        { label: "健康", value: nextState.health - state.health },
-        { label: "心情", value: nextState.mood - state.mood },
-        { label: "事业", value: nextState.career - state.career },
-        { label: "净资产", value: Math.round(financialTurn.netWorthChange) },
-      ].filter((item) => item.value !== 0);
-      const bulletinType = classifyBulletin(result);
-      if (shouldShowBulletin(result, majorAssets, lifeDeltas)) {
-        setTurnBulletin({
-          ...bulletinType,
-          resultLabel: bulletinType.label,
-          time: `${nextProtagonistAge}岁 · ${(nextMonth % 12) + 1}月`,
-          life: {
-            title: result.title,
-            summary: result.summary || result.log || result.event,
-            deltas: lifeDeltas.slice(0, 4),
-          },
-          world:
-            result.worldEvents?.find(
-              (event) => Number(event?.intensity) >= 70,
-            ) || null,
-          assets: majorAssets,
-        });
-      }
-      const snapshot = {
-        month: nextMonth,
-        state: nextState,
-        relations: evolvedNetwork.relations,
-        turn: nextTurn,
-        settings: nextSettings,
-        logs: nextLogs,
-        npcProfiles: evolvedNetwork.npcProfiles,
-        socialEdges: evolvedNetwork.socialEdges,
-        historicalContacts: evolvedNetwork.historicalContacts,
-        resume: nextResume,
-      };
+      dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.SAVING });
       setHistory((h) => {
         const next = [...h, snapshot];
         setPlaybackIndex(next.length);
@@ -699,23 +420,21 @@ export default function App() {
       });
       localStorage.setItem(
         "life_saved_game",
-        JSON.stringify({
-          version: SIMULATION_CONFIG.saveVersion,
-          ...snapshot,
-          history: [...history, snapshot],
-        }),
+        serializeGameSave(snapshot, [...history, snapshot]),
       );
       setHasSave(true);
       if (result.death?.occurred) {
+        dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.DEAD });
         setAutoPlay(false);
         void finishLife(snapshot);
+      } else {
+        dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.IDLE });
       }
     } catch (e) {
       playUiSound("low", soundEnabled);
       setError(e.message || "推演失败，请检查 API Key 与网络。");
       setAutoPlay(false);
-    } finally {
-      setSimulating(false);
+      dispatchGame({ type: "FAIL", error: e.message });
     }
   };
   const resolveApproval = (option, autoSelected) => {
@@ -732,7 +451,9 @@ export default function App() {
   const finishLife = async (snapshot = null) => {
     const source = snapshot?.state
       ? snapshot
-      : { settings, state, relations, logs, month };
+      : { settings, state, relations, logs, month, turn };
+    const terminal = Boolean(source.turn?.death?.occurred);
+    dispatchGame({ type: "TRANSITION", phase: GAME_PHASES.SUMMARIZING });
     setSummaryOpen(true);
     setSummaryLoading(true);
     setSummaryError("");
@@ -756,6 +477,10 @@ export default function App() {
       setSummaryError(e.message || "人生总结生成失败");
     } finally {
       setSummaryLoading(false);
+      dispatchGame({
+        type: "TRANSITION",
+        phase: terminal ? GAME_PHASES.ENDED : GAME_PHASES.IDLE,
+      });
     }
   };
   const randomizeProfile = async () => {
@@ -841,6 +566,7 @@ export default function App() {
   };
   const loadSavedGame = () => {
     try {
+      dispatchGame({ type: "RESET" });
       const save = JSON.parse(localStorage.getItem("life_saved_game"));
       const npcData = removeLegacyFixedContact({
         relations: save.relations || INITIAL_RELATIONS,
@@ -920,6 +646,7 @@ export default function App() {
         setMonth(data.month || 0);
         setHistory(data.history || []);
         setPlaybackIndex((data.history || []).length);
+        dispatchGame({ type: "RESET" });
         setStarted(true);
         setSetupOpen(false);
         localStorage.setItem(
@@ -972,6 +699,7 @@ export default function App() {
   const seekPlayback = (index) => {
     const i = Number(index);
     setAutoPlay(false);
+    dispatchGame({ type: "RESET" });
     setPlaybackIndex(i);
     if (i === 0) {
       setMonth(0);
@@ -1022,6 +750,7 @@ export default function App() {
     const kept = history.slice(0, playbackIndex);
     setHistory(kept);
     setAutoPlay(false);
+    dispatchGame({ type: "RESET" });
     localStorage.setItem(
       "life_saved_game",
       JSON.stringify({
@@ -1067,6 +796,7 @@ export default function App() {
     lifeEnded,
   ]);
   const reset = () => {
+    dispatchGame({ type: "RESET" });
     setStarted(false);
     setMonth(0);
     setState(createStateForSettings(settings));
@@ -1186,6 +916,7 @@ export default function App() {
           open={setupOpen}
           onClose={() => setSetupOpen(false)}
           onStart={(submittedSettings = settings) => {
+            dispatchGame({ type: "RESET" });
             const startingSettings = {
               ...submittedSettings,
               personalityProfile:

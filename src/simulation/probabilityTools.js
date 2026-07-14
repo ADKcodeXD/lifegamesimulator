@@ -3,6 +3,7 @@ import {
   buildRandomEventField,
   buildTurnOutcomeField,
 } from "./probabilityModel";
+import { createSeededRandom } from "../utils/prng";
 
 const EVENT_KEYS = [
   "ordinaryTwist",
@@ -56,6 +57,7 @@ export function createProbabilityToolRuntime(payload) {
         payload.turn,
         payload.month,
         payload.logs,
+        createSeededRandom(`${payload.randomSeed || "legacy"}:events`),
       ),
       outcome: buildTurnOutcomeField(
         payload.settings,
@@ -63,6 +65,7 @@ export function createProbabilityToolRuntime(payload) {
         payload.turn,
         payload.month,
         payload.logs,
+        createSeededRandom(`${payload.randomSeed || "legacy"}:outcome`),
       ),
       lifeStage: buildLifeStageField(
         payload.settings,
@@ -70,7 +73,9 @@ export function createProbabilityToolRuntime(payload) {
         age,
         payload.settings.monthsPerTurn || 6,
         payload.logs,
+        createSeededRandom(`${payload.randomSeed || "legacy"}:life-stage`),
       ),
+      randomSeed: payload.randomSeed || null,
     };
     return audit;
   };
@@ -110,6 +115,7 @@ export function createProbabilityToolRuntime(payload) {
         probabilities: resolved.outcome.probabilities,
         inheritedRisks: resolved.outcome.inheritedRisks,
       },
+      randomSeed: resolved.randomSeed,
       triggeredLifeStageEvents: resolved.lifeStage.events
         .filter((event) => event.triggered)
         .map((event) => ({ key: event.key, label: event.label })),

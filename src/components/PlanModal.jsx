@@ -52,7 +52,7 @@ export default function PlanModal({ open, onClose }) {
           <X size={18} />
         </IconButton>
         <div className="modal-title">
-          <span>SIMULATION ARCHITECTURE · v6</span>
+          <span>SIMULATION ARCHITECTURE · v7</span>
           <b>世界、人物、概率与死亡，共同组成一条可终止的人生状态机。</b>
         </div>
 
@@ -125,11 +125,12 @@ export default function PlanModal({ open, onClose }) {
             生成世界事件与人物行动；概率工具约束成功、失败、事故和死亡合理性
           </div>
           <div>
-            <span>输出</span>
-            回合事件、世界更新、财务交易、关系变化、死亡状态与游戏式素材反馈
+            <span>结算</span>
+            纯函数统一生成新快照与领域事件，UI 不直接修改人物状态
           </div>
           <div>
-            <span>持久化</span>所有结果写入存档，成为下一轮唯一历史前提
+            <span>输出</span>
+            领域事件驱动里程碑、重大弹窗、存档与死亡总结；固定种子支持复盘
           </div>
         </div>
         <button className="primary full" onClick={onClose}>

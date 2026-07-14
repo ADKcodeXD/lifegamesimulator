@@ -46,9 +46,9 @@ const DOMAIN_DEFINITIONS = {
   },
 };
 
-const weightedPick = (items) => {
+const weightedPick = (items, random = Math.random) => {
   const total = items.reduce((sum, item) => sum + item.weight, 0);
-  let roll = Math.random() * total;
+  let roll = random() * total;
   for (const item of items) {
     roll -= item.weight;
     if (roll <= 0) return item;
@@ -56,7 +56,12 @@ const weightedPick = (items) => {
   return items[items.length - 1];
 };
 
-export function buildLifeDomainField(settings, logs = [], age = 18) {
+export function buildLifeDomainField(
+  settings,
+  logs = [],
+  age = 18,
+  random = Math.random,
+) {
   const recentText = logs
     .slice(-3)
     .map((entry) => `${entry.tag || ""}${entry.title || ""}`)
@@ -98,7 +103,7 @@ export function buildLifeDomainField(settings, logs = [], age = 18) {
       };
     },
   );
-  const selected = weightedPick(candidates);
+  const selected = weightedPick(candidates, random);
   return {
     freedomLevel: settings.freedomLevel || "high",
     selected: {

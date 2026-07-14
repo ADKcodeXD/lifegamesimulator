@@ -9,6 +9,7 @@ import {
   createProbabilityToolRuntime,
   PROBABILITY_TOOL,
 } from "../simulation/probabilityTools";
+import { createSeededRandom } from "../utils/prng";
 
 export async function testLlmConnection({ apiKey, endpoint, model }) {
   const key = apiKey?.trim();
@@ -375,6 +376,7 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
     payload.settings,
     payload.logs,
     (payload.settings.startAge ?? 18) + Math.floor(payload.month / 12),
+    createSeededRandom(`${payload.randomSeed || "legacy"}:life-domain`),
   );
   const messages = [
     {
@@ -576,8 +578,12 @@ export async function callSimulator({ apiKey, endpoint, model }, payload) {
       probability: triggered.length
         ? Math.max(...triggered.map((item) => item.probability))
         : 0,
+      randomSeed: payload.randomSeed || null,
     },
-    outcomeAudit: sampledOutcomeField,
+    outcomeAudit: {
+      ...sampledOutcomeField,
+      randomSeed: payload.randomSeed || null,
+    },
     lifeStageAudit: {
       age: sampledLifeStageField.age,
       stage: sampledLifeStageField.stage,

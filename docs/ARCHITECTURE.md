@@ -15,18 +15,52 @@ flowchart LR
   P[人物状态与长期记忆] --> B
   D[玩家选择的方向权重] --> C[大模型角色决策]
   B --> C
-  C --> R[回合结算]
-  R --> W[世界事件与世界快照]
-  R --> F[资产 / 身体 / 人格 / 关系]
-  R --> G{是否重大节点}
+  C --> V[模型输出校验]
+  V --> R[resolveTurn 纯结算]
+  R --> E[结构化领域事件]
+  R --> W[统一 GameSnapshot]
+  E --> G{通知策略：是否重大节点}
   G -->|是| N[游戏式结果播报]
   G -->|否| S
   N --> S
   W --> S[(本地存档)]
-  F --> S
   S --> A
   S --> P
 ```
+
+## 回合执行状态机
+
+```mermaid
+stateDiagram-v2
+  [*] --> idle
+  idle --> preparing
+  preparing --> awaitingApproval
+  preparing --> generating
+  awaitingApproval --> generating
+  generating --> validating
+  validating --> settling
+  settling --> majorEvent
+  settling --> saving
+  majorEvent --> saving
+  saving --> idle
+  saving --> dead
+  dead --> summarizing
+  summarizing --> ended
+```
+
+非法转移会被状态机拒绝。React 只根据当前阶段显示加载、审批、弹窗或结束界面，不再用多个布尔值隐式拼接流程。
+
+## 快照与领域事件
+
+`resolveTurn(currentSnapshot, modelOutput, approval)` 是结算层单一入口。它统一结算财务、身体、人格、技能、关系、NPC 生命周期和时间推进，并一次性返回：
+
+```text
+{ snapshot, domainEvents, notification }
+```
+
+领域事件使用稳定类型，例如 `asset.majorChanged`、`relationship.changed`、`world.eventUpdated`、`life.milestoneReached` 和 `life.ended`。通知系统消费这些事件，核心逻辑不再依赖 UI 从标题中重复判断。
+
+每一轮根据人物、世界、月份和回合号生成固定随机种子。审批抽样、事件抽样、结果方向、年龄事件和生活领域使用相互隔离的派生随机流；相同输入可复现相同概率结果。
 
 ## 人生终止状态机
 
@@ -67,7 +101,12 @@ stateDiagram-v2
 
 ## 关键模块
 
-- `src/App.jsx`：回合编排、状态写回、存档、死亡终止与总结触发。
+- `src/App.jsx`：UI 编排和状态机命令，不承担领域结算。
+- `src/simulation/gameMachine.js`：显式回合与死亡生命周期状态机。
+- `src/simulation/turnResolver.js`：纯回合结算入口。
+- `src/simulation/domainEvents.js`：领域事件与重大通知策略。
+- `src/simulation/snapshot.js`：统一快照和存档序列化。
+- `src/utils/prng.js`：可复现的分流随机数生成器。
 - `src/services/llm.js`：模型上下文、世界事件输出、死亡约束与人生总结。
 - `src/simulation/probabilityTools.js`：独立概率抽样接口。
 - `src/simulation/probabilityModel.js`：按回合跨度换算事件概率，并计算有利、得失并存、不利和平淡四类结果概率。

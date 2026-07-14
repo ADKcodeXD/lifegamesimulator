@@ -175,7 +175,14 @@ export function buildAbilityModel(settings, state) {
   };
 }
 
-export function buildRandomEventField(settings, state, turn, month = 0, logs = []) {
+export function buildRandomEventField(
+  settings,
+  state,
+  turn,
+  month = 0,
+  logs = [],
+  random = Math.random,
+) {
   const model = buildAbilityModel(settings, state);
   const worldState = buildWorldState(settings, month, logs);
   const adventure = model.traits.冒险?.multiplier || 1;
@@ -279,7 +286,7 @@ export function buildRandomEventField(settings, state, turn, month = 0, logs = [
       annualProbability,
       settings.monthsPerTurn || 6,
     );
-    const roll = Math.random();
+    const roll = random();
     return {
       ...event,
       inheritedRisk:
@@ -362,11 +369,29 @@ export function calculateOutcomeProbabilities(
   return {
     probabilities,
     inheritedRisks: risks,
-    factors: { debtPressure, lowCondition },
+    factors: {
+      debtPressure,
+      lowCondition,
+      abilityOpportunity:
+        Math.max(0, model.skill.multiplier - 1) * 0.02 +
+        Math.max(0, model.intelligence.multiplier - 1) * 0.012 +
+        Math.max(0, model.talent.multiplier - 1) * 0.012 +
+        Math.max(0, model.financial.multiplier - 1) * 0.008,
+      worldOpportunity: worldState.modifiers.opportunityWeight,
+      worldAdverse: worldState.modifiers.adverseWeight,
+      weights,
+    },
   };
 }
 
-export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = []) {
+export function buildTurnOutcomeField(
+  settings,
+  state,
+  turn,
+  month = 0,
+  logs = [],
+  random = Math.random,
+) {
   const calculated = calculateOutcomeProbabilities(
     settings,
     state,
@@ -375,7 +400,7 @@ export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = [
     logs,
   );
   const { probabilities, inheritedRisks } = calculated;
-  const roll = Math.random();
+  const roll = random();
   let cursor = 0;
   let direction = "stagnant";
   for (const key of ["favorable", "mixed", "adverse", "stagnant"]) {
@@ -417,6 +442,7 @@ export function buildLifeStageField(
   age,
   monthsPerTurn = 6,
   logs = [],
+  random = Math.random,
 ) {
   const model = buildAbilityModel(settings, state);
   const traits = settings.traits || {};
@@ -633,7 +659,7 @@ export function buildLifeStageField(
     exposureNotOutcome: true,
     events: definitions.map(([key, label, annualProbability, guidance]) => {
       const probability = probabilityForTurn(annualProbability, monthsPerTurn);
-      const roll = Math.random();
+      const roll = random();
       return {
         key,
         label,
