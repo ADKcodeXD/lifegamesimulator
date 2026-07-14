@@ -15,6 +15,7 @@ import ApprovalRequest from "./components/ApprovalRequest";
 import ProfileDetailModal from "./components/ProfileDetailModal";
 import AssetLedgerModal from "./components/AssetLedgerModal";
 import WorldOverview from "./components/WorldOverview";
+import TurnBulletinModal from "./components/TurnBulletinModal";
 import {
   FAMILY_LEVELS,
   parentToRelation,
@@ -73,6 +74,11 @@ import { exportLifePoster } from "./utils/poster";
 import { playUiSound } from "./utils/sound";
 import { formatWorldMoney } from "./simulation/probabilityModel";
 import { buildWorldState } from "./simulation/worldModel";
+import {
+  consumeSelectedDirection,
+  getDirectionChoices,
+  selectDirection,
+} from "./simulation/directionModel";
 import {
   createBodyProfile,
   evolveBodyProfile,
@@ -160,6 +166,7 @@ export default function App() {
     [profileExpanded, setProfileExpanded] = useState(false),
     [milestoneDetail, setMilestoneDetail] = useState(null),
     [eventExpanded, setEventExpanded] = useState(false),
+    [turnBulletin, setTurnBulletin] = useState(null),
     [assetLedgerOpen, setAssetLedgerOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(
     () => localStorage.getItem("life_sound_enabled") !== "false",
@@ -208,7 +215,8 @@ export default function App() {
     monthOfYear = (month % 12) + 1,
     financialSummary = calculateFinancialSummary(state),
     netWorth = financialSummary.netWorth;
-  const worldState = buildWorldState(settings, month);
+  const worldState = buildWorldState(settings, month, logs);
+  const directionField = getDirectionChoices({ age, settings, state, relations, resume });
   const spouse = relations.find((r) =>
     /配偶|夫妻|妻子|丈夫|爱人|伴侣/.test(r.status),
   );
@@ -379,7 +387,7 @@ export default function App() {
         ),
       };
       const nextSettings = {
-        ...settings,
+        ...consumeSelectedDirection(settings),
         traits: Object.fromEntries(
           Object.entries(settings.traits).map(([k, v]) => [
             k,
@@ -543,6 +551,8 @@ export default function App() {
           financialEntries: financialTurn.entries,
           roi: result.roi,
           worldChange: result.worldChange,
+          worldEvents: result.worldEvents || [],
+          worldStateUpdate: result.worldStateUpdate || null,
           skillsGained: skillTurn.gained,
           skillsLost: skillTurn.lost,
           skillsUsed: skillTurn.used,
@@ -575,6 +585,37 @@ export default function App() {
       setLogs(nextLogs);
       setMonth(nextMonth);
       setNpcProfiles(evolvedNetwork.npcProfiles);
+      const majorAssets = financialTurn.entries.filter((entry) =>
+        ["buy_asset", "sell_asset"].includes(entry.kind) ||
+        ["realEstate", "vehicles"].includes(entry.account) ||
+        Math.abs(Number(entry.assetDelta) || 0) >= Math.max(50000, Math.abs(financialSummary.netWorth) * 0.2),
+      );
+      const lifeDeltas = [
+        { label: "健康", value: nextState.health - state.health },
+        { label: "心情", value: nextState.mood - state.mood },
+        { label: "事业", value: nextState.career - state.career },
+        { label: "净资产", value: Math.round(financialTurn.netWorthChange) },
+      ].filter((item) => item.value !== 0);
+      setTurnBulletin({
+        time: `${nextProtagonistAge}岁 · ${(nextMonth % 12) + 1}月`,
+        life: {
+          title: result.title,
+          summary: result.summary || result.log || result.event,
+          deltas: lifeDeltas.slice(0, 4),
+        },
+        world:
+          result.worldEvents?.[0] ||
+          (result.worldChange
+            ? {
+                title: "世界模型更新",
+                description: result.worldChange,
+                scope: result.worldStateUpdate?.region || worldState.region,
+                phase: "本轮变化",
+                tone: "neutral",
+              }
+            : null),
+        assets: majorAssets,
+      });
       const snapshot = {
         month: nextMonth,
         state: nextState,
@@ -923,7 +964,7 @@ export default function App() {
     );
   };
   useEffect(() => {
-    if (!autoPlay || !started || simulating) return;
+    if (!autoPlay || !started || simulating || turnBulletin) return;
     if (age >= settings.endAge) {
       setAutoPlay(false);
       finishLife();
@@ -937,7 +978,15 @@ export default function App() {
     const delay = Math.min(8000, Math.max(3500, textLen * 35));
     const timer = setTimeout(() => simulate(), delay);
     return () => clearTimeout(timer);
-  }, [autoPlay, started, simulating, month, playbackIndex, history.length]);
+  }, [
+    autoPlay,
+    started,
+    simulating,
+    month,
+    playbackIndex,
+    history.length,
+    turnBulletin,
+  ]);
   const reset = () => {
     setStarted(false);
     setMonth(0);
@@ -960,6 +1009,7 @@ export default function App() {
     setHistory([]);
     setPlaybackIndex(0);
     setAutoPlay(false);
+    setTurnBulletin(null);
     setSetupOpen(true);
   };
 
@@ -1056,10 +1106,10 @@ export default function App() {
         <SetupModal
           open={setupOpen}
           onClose={() => setSetupOpen(false)}
-          onStart={() => {
+          onStart={(submittedSettings = settings) => {
             const startingSettings = {
-              ...settings,
-              personalityProfile: createInitialPersonalityProfile(settings),
+              ...submittedSettings,
+              personalityProfile: createInitialPersonalityProfile(submittedSettings),
             };
             setSettings(startingSettings);
             setResume(createInitialResume(startingSettings));
@@ -1259,6 +1309,11 @@ export default function App() {
           setMilestoneDetail={setMilestoneDetail}
           world={settings.world}
           onOpenLedger={() => setAssetLedgerOpen(true)}
+          directionField={directionField}
+          onSelectDirection={(directionId) => {
+            setSettings((current) => selectDirection(current, directionId, month));
+            playUiSound("toggle", soundEnabled);
+          }}
         />
       </div>
       <MobileSheet
@@ -1386,7 +1441,10 @@ export default function App() {
       <SetupModal
         open={setupOpen}
         onClose={() => setSetupOpen(false)}
-        onStart={() => setSetupOpen(false)}
+        onStart={(submittedSettings) => {
+          setSettings(submittedSettings);
+          setSetupOpen(false);
+        }}
         settings={settings}
         setSettings={setSettings}
         error={error}
@@ -1439,6 +1497,11 @@ export default function App() {
         open={assetLedgerOpen}
         onClose={() => setAssetLedgerOpen(false)}
         state={state}
+        world={settings.world}
+      />
+      <TurnBulletinModal
+        bulletin={turnBulletin}
+        onClose={() => setTurnBulletin(null)}
         world={settings.world}
       />
     </div>

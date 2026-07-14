@@ -155,6 +155,7 @@ export default function SetupModal({
   const [tab, setTab] = useState("person");
   const [startError, setStartError] = useState("");
   const nameInputRef = useRef(null);
+  const heightInputRef = useRef(null);
   if (!open) return null;
   const parents = settings.parents || parentsForFamily(settings.family);
   return (
@@ -439,23 +440,23 @@ export default function SetupModal({
               <label>
                 成年最终身高（cm）
                 <input
+                  ref={heightInputRef}
                   type="number"
-                  min="130"
-                  max="220"
-                  value={settings.physicalProfile?.adultHeightCm || 175}
-                  onChange={(e) =>
+                  inputMode="decimal"
+                  value={settings.physicalProfile?.adultHeightCm ?? 175}
+                  aria-invalid={Boolean(startError && /身高/.test(startError))}
+                  onChange={(e) => {
+                    setStartError("");
                     setSettings({
                       ...settings,
                       physicalProfile: {
                         ...settings.physicalProfile,
-                        adultHeightCm: Math.max(
-                          130,
-                          Math.min(220, +e.target.value),
-                        ),
+                        adultHeightCm: e.target.value,
                       },
-                    })
-                  }
+                    });
+                  }}
                 />
+                <small className="field-helper">输入时不截断，启动模拟时统一校验</small>
               </label>
               <label>
                 初始身材
@@ -716,7 +717,7 @@ export default function SetupModal({
           </div>
         )}
         <div className="modal-actions">
-          {startError && !settings.name.trim() && (
+          {startError && (
             <span className="setup-start-error" role="alert">
               <CircleAlert size={15} />
               {startError}
@@ -742,8 +743,20 @@ export default function SetupModal({
                 });
                 return;
               }
+              const height = Number(settings.physicalProfile?.adultHeightCm);
+              if (!Number.isFinite(height) || height < 130 || height > 220) {
+                setStartError("成年最终身高请填写 130–220 cm 之间的有效数值。");
+                heightInputRef.current?.focus();
+                heightInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                return;
+              }
+              const submittedSettings = {
+                ...settings,
+                physicalProfile: { ...settings.physicalProfile, adultHeightCm: height },
+              };
+              setSettings(submittedSettings);
               setStartError("");
-              onStart();
+              onStart(submittedSettings);
             }}
           >
             启动模拟 <ArrowRight size={16} />

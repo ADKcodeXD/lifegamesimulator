@@ -55,12 +55,14 @@ export function createProbabilityToolRuntime(payload) {
         payload.state,
         payload.turn,
         payload.month,
+        payload.logs,
       ),
       outcome: buildTurnOutcomeField(
         payload.settings,
         payload.state,
         payload.turn,
         payload.month,
+        payload.logs,
       ),
       lifeStage: buildLifeStageField(
         payload.settings,

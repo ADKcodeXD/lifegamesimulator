@@ -12,6 +12,7 @@ import {
   currencyForWorld,
   formatWorldMoney,
 } from "../simulation/probabilityModel";
+import DirectionChoices from "./DirectionChoices";
 
 export default function RightPanel({
   turn,
@@ -29,6 +30,8 @@ export default function RightPanel({
   setMilestoneDetail,
   world,
   onOpenLedger,
+  directionField,
+  onSelectDirection,
 }) {
   const currency = currencyForWorld(world);
   const netWorthChange = Number(turn.netWorthChange ?? turn.cashflow) || 0;
@@ -101,6 +104,12 @@ export default function RightPanel({
               查看资产、负债与账本
             </span>
           </button>
+
+          <DirectionChoices
+            directionField={directionField}
+            onSelect={onSelectDirection}
+            disabled={simulating}
+          />
 
           <div className="probability-list">
             <b>下一阶段概率</b>

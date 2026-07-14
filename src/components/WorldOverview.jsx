@@ -17,13 +17,21 @@ export default function WorldOverview({ worldState }) {
           <p>{worldState.summary}</p>
         </div>
         <div className="world-event-strip">
-          {worldState.events.slice(0, 3).map((event) => (
-            <span className={`tone-${event.tone}`} key={event.id} title={event.description}>
+          {worldState.events.length ? (
+            worldState.events.slice(0, 3).map((event) => (
+              <span className={`tone-${event.tone}`} key={event.id} title={event.description}>
+                <Activity size={13} />
+                <b>{event.title}</b>
+                <small>{event.phase}</small>
+              </span>
+            ))
+          ) : (
+            <span className="world-event-empty">
               <Activity size={13} />
-              <b>{event.title}</b>
-              <small>{event.phase}</small>
+              <b>尚无模型生成的世界新闻</b>
+              <small>等待首次推演</small>
             </span>
-          ))}
+          )}
         </div>
       </div>
     </section>

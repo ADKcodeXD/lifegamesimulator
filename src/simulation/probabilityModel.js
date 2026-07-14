@@ -172,9 +172,9 @@ export function buildAbilityModel(settings, state) {
   };
 }
 
-export function buildRandomEventField(settings, state, turn, month = 0) {
+export function buildRandomEventField(settings, state, turn, month = 0, logs = []) {
   const model = buildAbilityModel(settings, state);
-  const worldState = buildWorldState(settings, month);
+  const worldState = buildWorldState(settings, month, logs);
   const adventure = model.traits.冒险?.multiplier || 1;
   const curiosity = model.traits.好奇?.multiplier || 1;
   const exposure = /旅行|户外|骑行|驾驶|夜班|加班|创业/.test(
@@ -295,9 +295,9 @@ export function buildRandomEventField(settings, state, turn, month = 0) {
   });
 }
 
-export function buildTurnOutcomeField(settings, state, turn, month = 0) {
+export function buildTurnOutcomeField(settings, state, turn, month = 0, logs = []) {
   const model = buildAbilityModel(settings, state);
-  const worldState = buildWorldState(settings, month);
+  const worldState = buildWorldState(settings, month, logs);
   const risks = {
     opportunity: riskScore(turn, /职业|升职|跃迁|就业|机会/, 18),
     relationship: riskScore(turn, /关系|婚恋|家庭|背叛|社交/, 12),
